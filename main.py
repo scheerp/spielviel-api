@@ -25,21 +25,12 @@ def get_db():
 
 app.add_middleware(
     CORSMiddleware,
-    #allow_origins=["http://localhost:3000"],
-    allow_origins=["*"],
+    allow_origins=["http://localhost:3000"],
+    #allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-@app.post("/register")
-def register_user(username: str, password: str, db: Session = Depends(get_db)):
-    hashed_pw = hash_password(password)
-    user = User(username=username, hashed_password=hashed_pw)
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-    return {"message": "User created successfully", "username": user.username}
 
 @app.post("/token")
 def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
@@ -55,6 +46,17 @@ def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db:
         data={"sub": user.username}, expires_delta=access_token_expires
     )
     return {"access_token": access_token, "token_type": "bearer"}
+
+
+@app.post("/register")
+def register_user(username: str, password: str, db: Session = Depends(get_db)):
+    hashed_pw = hash_password(password)
+    user = User(username=username, hashed_password=hashed_pw)
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return {"message": "User created successfully", "username": user.username}
+
 
 def get_admin_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     user = get_current_user(token, db)

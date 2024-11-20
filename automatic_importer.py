@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from database import SessionLocal
 from models import Game
 from scrape_german_name_playwright import get_german_name_with_playwright
+from tqdm import tqdm
 
 # Schritt 1: Daten von der BGG-API holen
 def fetch_geeklist(bgg_list_id, retry_interval=5, max_retries=10):
@@ -16,10 +17,9 @@ def fetch_geeklist(bgg_list_id, retry_interval=5, max_retries=10):
         response = requests.get(base_url)
         if response.status_code == 200 and "<message>" not in response.text:
             return response.text
-        print(f"Geeklist not ready yet. Retrying in {retry_interval} seconds...")
+        print(f"Geeklist not ready yet. Retrying in {retry_interval} seconds... (Attempt {attempt + 1}/{max_retries})")
         time.sleep(retry_interval)
     raise Exception("Failed to fetch geeklist after multiple retries.")
-
 
 # Schritt 3: Einträge in die Datenbank hinzufügen
 def add_entries_to_db(data):
@@ -44,8 +44,9 @@ def add_entries_to_db(data):
         db.close()
 
 # Hauptprozess
-def main():
-    bgg_list_id = 346629  # Beispiel-Geeeklist-ID
+def main():    #bgg_list_id = 327001  # Beispiel-Geeeklist-ID
+    bgg_list_id = 327001  #  SpielViel-Geeeklist-ID
+    # bgg_list_id = 346629  # Test-Geeeklist-ID
     bgg_base_url = "https://boardgamegeek.com"
 
     print("Fetching Geeklist...")
@@ -58,15 +59,21 @@ def main():
     print(f"{len(items)} Spiele gefunden. Starte Verarbeitung...")
 
     scraped_data = []
-    for item in items:
+
+    # Fortschrittsbalken über die Items
+    for item in tqdm(items, desc="Verarbeite Spiele", unit="Spiel", colour='green'):
         object_id = int(item["objectid"])
         object_name = item["objectname"]
-        print(f"Processing Game ID: {object_id} - {object_name}")
+        print(f"\n➡️  Processing Game ID: {object_id} - {object_name}")
 
         # Scrape German name and image
         scraped_info = get_german_name_with_playwright(bgg_base_url, object_id)
         german_name = scraped_info["title"] or object_name
         img_url = scraped_info["img_url"]
+
+        print(f"   📘 Deutscher Titel: {german_name}")
+        print(f"   🖼️  Bild-URL: {img_url if img_url else 'Kein Bild gefunden'}")
+        print("_______________________________________________________________________________________________________")
 
         # Add to the dataset
         scraped_data.append({
@@ -78,9 +85,9 @@ def main():
         # Rate limiting to avoid being blocked
         time.sleep(2)
 
-    print("Speichere Daten in der Datenbank...")
+    print("\nSpeichere Daten in der Datenbank...")
     add_entries_to_db(scraped_data)
-    print("Alle Daten erfolgreich gespeichert!")
+    print("✅ Alle Daten erfolgreich gespeichert!")
 
 # Skript starten
 if __name__ == "__main__":

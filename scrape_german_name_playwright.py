@@ -17,7 +17,6 @@ def get_german_name_with_playwright(bgg_base_url, bgg_game_id, max_pages=2, paus
 
     # Construct the base URL
     full_url = f"{bgg_base_url}/boardgame/{bgg_game_id}"
-    print(f"Gefundene vollständige URL: {full_url}")
 
     with sync_playwright() as p:
         # Start the Chromium browser in headless mode
@@ -37,7 +36,6 @@ def get_german_name_with_playwright(bgg_base_url, bgg_game_id, max_pages=2, paus
             while current_page <= max_pages:
                 # Construct the URL for the current page with the language filter
                 url = f"{redirected_url}/versions?pageid={current_page}{language_filter}"
-                print(f"Scraping URL: {url}")
 
                 # Load the page
                 page.goto(url)
@@ -56,14 +54,15 @@ def get_german_name_with_playwright(bgg_base_url, bgg_game_id, max_pages=2, paus
                         anchor_tag = details.find("a", class_="ng-binding")
                         if anchor_tag:
                             german_name = anchor_tag.contents[0].strip() if anchor_tag.contents else ""
-                            print(f"Gefundener deutscher Titel: {german_name}")
 
                         break
 
-                if german_name:  # Break if the German title was found
+                img_url = soup.find("img", class_="img-responsive")['src']
 
-                    img_url = soup.find("img", class_="img-responsive")['src']
+                if german_name:  # Break if the German title was found
                     break
+
+                img_url = soup.find("img", class_="img-responsive")['src']
 
                 # Prüfen, ob es eine nächste Seite gibt
                 next_page = soup.find("a", class_="next")
@@ -83,13 +82,11 @@ def get_german_name_with_playwright(bgg_base_url, bgg_game_id, max_pages=2, paus
             "img_url": img_url
         }
 
-    return returnValue or "Kein deutscher Titel gefunden"
+    return returnValue
 
 
 # Beispielaufruf
 if __name__ == "__main__":
     bgg_base_url = "https://boardgamegeek.com"
-    bgg_game_id = 19857
+    bgg_game_id = 321595
     resultDict = get_german_name_with_playwright(bgg_base_url, bgg_game_id)
-    print(f"Deutscher Titel: {resultDict["title"]}")
-    print(f"Image URL: {resultDict["img_url"]}")

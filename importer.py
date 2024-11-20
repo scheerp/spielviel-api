@@ -5,6 +5,7 @@ from models import Game
 # Beispiel-JSON-Objekt
 data = []
 
+
 # Funktion, um Daten in die Datenbank zu übertragen
 def add_entries_to_db(data):
     db: Session = SessionLocal()
@@ -15,7 +16,7 @@ def add_entries_to_db(data):
                 bgg_id=int(item['id']),
                 name=item['name'],
                 img_url=item['imageSets']['square100']['src'] if 'square100' in item['imageSets'] else None,
-                is_available=True  # Kann angepasst werden, falls du es basierend auf anderen Kriterien festlegen willst
+                is_available=True
             )
 
             # Überprüfen, ob das Spiel bereits in der DB existiert (optional)

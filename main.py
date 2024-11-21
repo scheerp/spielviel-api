@@ -8,11 +8,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from auth import hash_password, create_access_token, verify_password, ACCESS_TOKEN_EXPIRE_MINUTES, get_current_user
 from pydantic import BaseModel
 from sqlalchemy import asc
+from fetch_and_store import fetch_and_store
 
 Base.metadata.create_all(bind=engine)
+username = 'SpielViel'
+fetch_and_store(username)
 
 app = FastAPI()
-
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 # Abhängigkeit zur Datenbank-Sitzung

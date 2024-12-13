@@ -7,6 +7,8 @@ from models import Game
 from scrape_german_name_playwright import get_german_name_with_playwright
 from tqdm import tqdm
 
+# TODO: This file is outdated!
+
 # Schritt 1: Daten von der BGG-API holen
 def fetch_geeklist(bgg_list_id, retry_interval=5, max_retries=10):
     """

@@ -14,10 +14,12 @@ class Game(Base):
     max_playtime = Column(Integer, nullable=True)
     playing_time = Column(Integer, nullable=True)
     rating = Column(Float, nullable=True)
+    ean = Column(String, unique=True, nullable=True)
+    available = Column(Integer, default=1)
+    borrow_count = Column(Integer, default=0)
+    total_copies = Column(Integer, default=1)
     img_url = Column(String, nullable=True)
     thumbnail_url = Column(String, nullable=True)
-    ean = Column(String, unique=True, nullable=True)
-    is_available = Column(Boolean, default=True)
 
 class User(Base):
     __tablename__ = 'users'
@@ -25,4 +27,4 @@ class User(Base):
     username = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
     is_active = Column(Boolean, default=True)
-    role = Column(String, default="admin")  # Beispielrollen: "user", "admin"
+    role = Column(String, default="admin")

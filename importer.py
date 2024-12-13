@@ -2,6 +2,8 @@ from sqlalchemy.orm import Session
 from database import SessionLocal
 from models import Game
 
+# TODO: This file is outdated!
+
 # Beispiel-JSON-Objekt
 data = []
 

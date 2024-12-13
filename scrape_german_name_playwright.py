@@ -2,6 +2,8 @@ from playwright.sync_api import sync_playwright
 from bs4 import BeautifulSoup
 import time
 
+# TODO: This file is outdated!
+
 def get_german_name_with_playwright(bgg_base_url, bgg_game_id, max_pages=2, pause=2):
     """
     Scrapes the German title of a board game from its versions page on BoardGameGeek using Playwright.

@@ -11,7 +11,9 @@ from sqlalchemy import asc
 from fetch_and_store import fetch_and_store
 
 Base.metadata.create_all(bind=engine)
-username = 'SpielViel'
+#TODO:
+# username = 'SpielViel'
+username = 'ultra_paddy'
 fetch_and_store(username)
 
 app = FastAPI()
@@ -90,7 +92,7 @@ def read_all_games(db: Session = Depends(get_db)):
 
 @app.get("/available_games")
 def read_all_available_games(db: Session = Depends(get_db)):
-    games = db.query(Game).filter(Game.is_available == True).all()
+    games = db.query(Game).filter(Game.available > 0).all()
     if not games:
         raise HTTPException(status_code=404, detail="Keine verfügbaren Spiele gefunden")
     return games
@@ -102,15 +104,78 @@ def read_game(game_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Spiel nicht gefunden")
     return game
 
-class UpdateGameRequest(BaseModel):
-    is_available: bool
+@app.get("/game_by_ean/{ean}")
+def read_game(ean: int, db: Session = Depends(get_db)):
+    game = db.query(Game).filter(Game.ean == ean).first()
+    if game is None:
+        raise HTTPException(status_code=404, detail="Spiel nicht gefunden")
+    return game
 
-@app.put("/update_game/{game_id}")
-def update_game(game_id: int, request: UpdateGameRequest, db: Session = Depends(get_db), current_user: User = Depends(get_admin_user)):
+
+@app.put("/borrow_game/{game_id}")
+def borrow_game(game_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_admin_user)):
     game = db.query(Game).filter(Game.id == game_id).first()
     if game is None:
         raise HTTPException(status_code=404, detail="Spiel nicht gefunden")
-    game.is_available = request.is_available
+    if game.available > 0:
+        game.available -=1
+        game.borrow_count +=1
+    else:
+        game.available = 0
+    db.commit()
+    db.refresh(game)
+    return game
+
+@app.put("/return_game/{game_id}")
+def return_game(game_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_admin_user)):
+    game = db.query(Game).filter(Game.id == game_id).first()
+    if game is None:
+        raise HTTPException(status_code=404, detail="Spiel nicht gefunden")
+    if game.available < game.total_copies:
+        game.available += 1
+    else:
+        game.available = game.total_copies
+    db.commit()
+    db.refresh(game)
+    return game
+
+class AddEANRequest(BaseModel):
+    ean: int
+
+@app.put("/add_ean/{game_id}")
+def add_ean(game_id: int, request: AddEANRequest, db: Session = Depends(get_db), current_user: User = Depends(get_admin_user)):
+    game = db.query(Game).filter(Game.id == game_id).first()
+    if game is None:
+        raise HTTPException(status_code=404, detail="Spiel nicht gefunden")
+    game.ean = request.ean
+    db.commit()
+    db.refresh(game)
+    return game
+
+
+@app.put("/borrow_game_ean/{game_ean}")
+def borrow_game(game_ean: int, db: Session = Depends(get_db), current_user: User = Depends(get_admin_user)):
+    game = db.query(Game).filter(Game.ean == game_ean).first()
+    if game is None:
+        raise HTTPException(status_code=404, detail="Spiel mit dieser EAN nicht gefunden")
+    if game.available > 0:
+        game.available -=1
+        game.borrow_count +=1
+    else:
+        game.available = 0
+    db.commit()
+    db.refresh(game)
+    return game
+
+@app.put("/return_game_ean/{game_ean}")
+def return_game(game_ean: int, db: Session = Depends(get_db), current_user: User = Depends(get_admin_user)):
+    game = db.query(Game).filter(Game.ean == game_ean).first()
+    if game is None:
+        raise HTTPException(status_code=404, detail="Spiel mit dieser EAN nicht gefunden")
+    if game.available < game.total_copies:
+        game.available += 1
+    else:
+        game.available = game.total_copies
     db.commit()
     db.refresh(game)
     return game

@@ -142,14 +142,36 @@ def return_game(game_id: int, db: Session = Depends(get_db), current_user: User 
 class AddEANRequest(BaseModel):
     ean: int
 
+
 @app.put("/add_ean/{game_id}")
-def add_ean(game_id: int, request: AddEANRequest, db: Session = Depends(get_db), current_user: User = Depends(get_admin_user)):
+def add_ean(game_id: int, request: AddEANRequest, db: Session = Depends(get_db),
+            current_user: User = Depends(get_admin_user)):
+    # Überprüfen, ob das Spiel existiert
     game = db.query(Game).filter(Game.id == game_id).first()
     if game is None:
         raise HTTPException(status_code=404, detail="Spiel nicht gefunden")
+
+    # Überprüfen, ob die EAN bereits existiert
+    existing_game = db.query(Game).filter(Game.ean == request.ean).first()
+    if existing_game:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "Der Barcode ist bereits vergeben",
+                "error_code": "BARCODE_CONFLICT",
+                "existing_game": {
+                    "id": existing_game.id,
+                    "name": existing_game.name,
+                    "ean": existing_game.ean
+                }
+            }
+        )
+
+    # Wenn die EAN nicht vergeben ist, setze sie und aktualisiere das Spiel
     game.ean = request.ean
     db.commit()
     db.refresh(game)
+
     return game
 
 

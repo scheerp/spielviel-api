@@ -18,6 +18,7 @@ ERROR_CODES = {
     "NOT_AUTHORIZED": {"message": "Benutzer ist nicht autorisiert."},
     "PERMISSION_DENIED": {"message": "Keine Admin-Berechtigung."},
     "NO_COPIES_AVAILABLE": {"message": "Es sind keine verfügbaren Kopien vorhanden."},
+    "ALL_COPIES_AVAILABLE": {"message": "Alle verfügbaren Kopien bereits zurückgegeben."},
     "USER_ALREADY_EXISTS": {"message": "Der Benutzername ist bereits vergeben."},
 }
 
@@ -164,6 +165,7 @@ def return_game(game_id: int, db: Session = Depends(get_db), current_user: User 
     if game.available < game.total_copies:
         game.available += 1
     else:
+        create_error(status_code=400, error_code="ALL_COPIES_AVAILABLE")
         game.available = game.total_copies
     db.commit()
     db.refresh(game)

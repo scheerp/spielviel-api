@@ -1,3 +1,4 @@
+import os
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
@@ -25,7 +26,7 @@ ERROR_CODES = {
 Base.metadata.create_all(bind=engine)
 
 # Benutzername für fetch_and_store
-username = 'ultra_paddy'
+username = os.getenv("BGG_USERNAME")
 fetch_and_store(username)
 
 app = FastAPI()

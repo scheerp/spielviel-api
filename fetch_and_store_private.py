@@ -13,8 +13,6 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
-import chromedriver_autoinstaller
-import pyppeteer
 import os
 import json
 
@@ -25,22 +23,20 @@ def login_bgg(username, password):
     """
     login_url = "https://boardgamegeek.com/login"  # Die Login-Seite
 
-    # Installiere den Chrome-Browser und Chromedriver
-    chromedriver_autoinstaller.install()
-
-    # Pfad zum Chrome-Browser dynamisch ermitteln
-    chrome_binary_path = pyppeteer.executablePath()
-    if not os.path.exists(chrome_binary_path):
-        raise FileNotFoundError(f"Chrome binary not found at {chrome_binary_path}")
-
     # Set up Selenium WebDriver
     chrome_options = Options()
     chrome_options.add_argument("--headless")  # Run in headless mode
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
+
+    # Pfad zum Chrome-Browser
+    chrome_binary_path = os.getenv("CHROME_BINARY_PATH", "/usr/bin/google-chrome")
+    if not os.path.exists(chrome_binary_path):
+        raise FileNotFoundError(f"Chrome binary not found at {chrome_binary_path}")
     chrome_options.binary_location = chrome_binary_path
 
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+
 
     # Schritt 1: Login-Seite holen
     driver.get(login_url)

@@ -28,7 +28,7 @@ def login_bgg(username, password):
     chrome_options.add_argument("--headless")  # Run in headless mode
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_binary_path = os.getenv("GOOGLE_CHROME_BIN", "C:/Program Files/Google/Chrome/Application/chrome.exe")
+    chrome_binary_path = os.getenv("CHROME_BINARY_PATH", "C:/Program Files/Google/Chrome/Application/chrome.exe")
     chrome_options.binary_location = chrome_binary_path
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
 

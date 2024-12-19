@@ -28,9 +28,15 @@ def login_bgg(username, password):
     chrome_options.add_argument("--headless")  # Run in headless mode
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_binary_path = os.getenv("CHROME_BINARY_PATH", "C:/Program Files/Google/Chrome/Application/chrome.exe")
+
+    # Pfad zum Chrome-Browser
+    chrome_binary_path = os.getenv("CHROME_BINARY_PATH", "/usr/bin/google-chrome")
+    if not os.path.exists(chrome_binary_path):
+        raise FileNotFoundError(f"Chrome binary not found at {chrome_binary_path}")
     chrome_options.binary_location = chrome_binary_path
+
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+
 
     # Schritt 1: Login-Seite holen
     driver.get(login_url)

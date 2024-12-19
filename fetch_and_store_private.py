@@ -13,6 +13,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
+import chromedriver_autoinstaller
 import os
 import json
 
@@ -23,13 +24,17 @@ def login_bgg(username, password):
     """
     login_url = "https://boardgamegeek.com/login"  # Die Login-Seite
 
+    chromedriver_autoinstaller.install()
+
     # Set up Selenium WebDriver
     chrome_options = Options()
     chrome_options.add_argument("--headless")  # Run in headless mode
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--remote-debugging-port=9222")
 
     # Pfad zum Chrome-Browser
+    print("Chrome Binary Path:", os.getenv("CHROME_BINARY_PATH"))
     chrome_binary_path = os.getenv("CHROME_BINARY_PATH", "/usr/bin/google-chrome")
     if not os.path.exists(chrome_binary_path):
         raise FileNotFoundError(f"Chrome binary not found at {chrome_binary_path}")
@@ -39,7 +44,12 @@ def login_bgg(username, password):
 
 
     # Schritt 1: Login-Seite holen
-    driver.get(login_url)
+    try:
+        driver.get(login_url)
+    except Exception as e:
+        print(f"Fehler beim Laden der Seite: {e}")
+        driver.quit()
+
     print("🔄 Login-Seite geladen")
 
     # Schritt 2: Cookie-Consent-Banner schließen

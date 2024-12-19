@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from auth import hash_password, create_access_token, verify_password, ACCESS_TOKEN_EXPIRE_MINUTES, get_current_user
 from pydantic import BaseModel
 from sqlalchemy import asc
-from fetch_and_store import fetch_and_store
+from fetch_and_store_private import fetch_and_store_private
 
 # Fehlercodes zentral definieren
 ERROR_CODES = {
@@ -26,10 +26,15 @@ ERROR_CODES = {
 Base.metadata.create_all(bind=engine)
 
 # Benutzername für fetch_and_store
-username = os.getenv("BGG_USERNAME")
-fetch_and_store(username)
+# fetch_and_store(bgg_username)
+
+# Benutzername für fetch_and_store
+bgg_username = os.getenv("BGG_USERNAME")
+bgg_password = os.getenv("BGG_PASSWORD")
+# fetch_and_store(bgg_username, bgg_password)
 
 app = FastAPI()
+
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 
@@ -67,7 +72,6 @@ app.add_middleware(
 @app.get("/")
 def read_root():
     return {"message": "Hello World"}
-
 
 @app.post("/token")
 def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
@@ -229,3 +233,12 @@ def return_game_ean(game_ean: int, db: Session = Depends(get_db), current_user: 
     db.commit()
     db.refresh(game)
     return game
+
+
+@app.post("/fetch_private_collection")
+def fetch_private_collection(db: Session = Depends(get_db), current_user: User = Depends(get_admin_user)):
+    try:
+        collection = fetch_and_store_private(bgg_username, bgg_password)
+        return collection
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

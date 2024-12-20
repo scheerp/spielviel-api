@@ -42,7 +42,6 @@ def login_bgg(username, password):
 
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
 
-
     # Schritt 1: Login-Seite holen
     try:
         driver.get(login_url)

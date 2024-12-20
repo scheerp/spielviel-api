@@ -10,6 +10,7 @@ from auth import hash_password, create_access_token, verify_password, ACCESS_TOK
 from pydantic import BaseModel
 from sqlalchemy import asc
 from fetch_and_store_private import fetch_and_store_private
+from add_ean_bgg import add_ean_bgg
 
 # Fehlercodes zentral definieren
 ERROR_CODES = {
@@ -25,13 +26,6 @@ ERROR_CODES = {
 
 Base.metadata.create_all(bind=engine)
 
-# Benutzername für fetch_and_store
-# fetch_and_store(bgg_username)
-
-# Benutzername für fetch_and_store
-bgg_username = os.getenv("BGG_USERNAME")
-bgg_password = os.getenv("BGG_PASSWORD")
-# fetch_and_store(bgg_username, bgg_password)
 
 app = FastAPI()
 
@@ -68,6 +62,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+bgg_username = os.getenv("BGG_USERNAME")
+bgg_password = os.getenv("BGG_PASSWORD")
+#fetch_and_store_private(bgg_username, bgg_password)
 
 @app.get("/")
 def read_root():
@@ -167,11 +164,11 @@ def return_game(game_id: int, db: Session = Depends(get_db), current_user: User 
     game = db.query(Game).filter(Game.id == game_id).first()
     if game is None:
         create_error(status_code=404, error_code="GAME_NOT_FOUND", details={"game_id": game_id})
-    if game.available < game.total_copies:
+    if game.available < game.quantity:
         game.available += 1
     else:
         create_error(status_code=400, error_code="ALL_COPIES_AVAILABLE")
-        game.available = game.total_copies
+        game.available = game.quantity
     db.commit()
     db.refresh(game)
     return game
@@ -200,9 +197,16 @@ def add_ean(game_id: int, request: AddEANRequest, db: Session = Depends(get_db),
             },
         )
 
+    try:
+        updated_textarea_content = add_ean_bgg(bgg_username, bgg_password, game.bgg_id, request.ean)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
     game.ean = request.ean
+    game.private_comment = updated_textarea_content
     db.commit()
     db.refresh(game)
+
     return game
 
 
@@ -235,7 +239,7 @@ def return_game_ean(game_ean: int, db: Session = Depends(get_db), current_user: 
     return game
 
 
-@app.post("/fetch_private_collection")
+@app.get("/fetch_private_collection")
 def fetch_private_collection(db: Session = Depends(get_db), current_user: User = Depends(get_admin_user)):
     try:
         collection = fetch_and_store_private(bgg_username, bgg_password)

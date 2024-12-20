@@ -28,7 +28,7 @@ def login_bgg(username, password):
 
     # Set up Selenium WebDriver
     chrome_options = Options()
-    chrome_options.add_argument("--headless")  # Run in headless mode
+    chrome_options.add_argument("--headless")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--remote-debugging-port=9222")
@@ -133,7 +133,7 @@ def parse_collection(xml_data):
         "rating": None,
         "img_url": None,
         "thumbnail_url": None,
-        "available": 0,
+        "available": 1,
         "quantity": 1,
         "inventory_location": None,
         "ean": None,
@@ -162,6 +162,7 @@ def parse_collection(xml_data):
 
         # Parse privateinfo und privatecomment
         if private_info:
+            game["available"] = int(private_info["quantity"]) if private_info and private_info.get("quantity") else game["available"]
             game["quantity"] = int(private_info["quantity"]) if private_info and private_info.get("quantity") else game["quantity"]
             game["acquired_from"] = private_info["acquiredfrom"] if private_info and private_info.get("acquiredfrom") else game["acquired_from"]
             game["inventory_location"] = private_info["inventorylocation"] if private_info and private_info.get("inventorylocation") else game["inventory_location"]

@@ -87,7 +87,7 @@ docker build -t spielviel-api .
 Start a Docker container with the image:
 
 ```bash
-docker run -d -p 8000:8000 --env-file .env spielviel-api
+docker run -v spielviel-api:/app -p 8000:8000 spielviel-api
 ```
 
 - `-d`: Runs the container in the background.

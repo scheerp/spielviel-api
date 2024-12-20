@@ -33,4 +33,3 @@ EXPOSE 8000
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
 
-# container mit volume starten: "docker run -v C:\Users\Paddy\Documents\Coding\spielviel-api:/app -p 8000:8000 spielviel-api"

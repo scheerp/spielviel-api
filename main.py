@@ -239,7 +239,7 @@ def return_game_ean(game_ean: int, db: Session = Depends(get_db), current_user: 
     return game
 
 
-@app.get("/fetch_private_collection")
+@app.post("/fetch_private_collection")
 def fetch_private_collection(db: Session = Depends(get_db), current_user: User = Depends(get_admin_user)):
     try:
         collection = fetch_and_store_private(bgg_username, bgg_password)

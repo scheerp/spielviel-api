@@ -166,13 +166,25 @@ def parse_collection(xml_data):
             game["quantity"] = int(private_info["quantity"]) if private_info and private_info.get("quantity") else game["quantity"]
             game["acquired_from"] = private_info["acquiredfrom"] if private_info and private_info.get("acquiredfrom") else game["acquired_from"]
             game["inventory_location"] = private_info["inventorylocation"] if private_info and private_info.get("inventorylocation") else game["inventory_location"]
+            
             private_comment = private_info.find("privatecomment")
             if private_comment is not None:
                 game["private_comment"] = private_comment.text
                 private_comment_text = private_comment.text.strip()
+                
                 if private_comment_text:
-                    private_comment_json = json.loads(private_comment_text)
-                    game.update(private_comment_json)
+                    # Extrahiere nur den JSON-Teil nach dem Zeilenumbruch
+                    json_part = private_comment_text.split("\n")[-1].strip()
+                    
+                    # Debugging-Ausgabe
+                    print("HIER:", json_part)
+                    
+                    # Versuche, nur den JSON-Teil zu parsen
+                    try:
+                        private_comment_json = json.loads(json_part)
+                        game.update(private_comment_json)
+                    except json.JSONDecodeError as e:
+                        print(f"⚠️ Ungültiger JSON im privatecomment: {json_part}")
 
     return list(grouped_games.values())
 

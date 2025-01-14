@@ -9,7 +9,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from auth import hash_password, create_access_token, verify_password, ACCESS_TOKEN_EXPIRE_MINUTES, get_current_user
 from pydantic import BaseModel
 from sqlalchemy import asc
+from typing import List
 from fetch_and_store_private import fetch_and_store_private
+from fetch_and_store_tags import update_tags_logic
 from add_ean_bgg import add_ean_bgg
 
 # Fehlercodes zentral definieren
@@ -135,6 +137,12 @@ def read_game(game_id: int, db: Session = Depends(get_db)):
         create_error(status_code=404, error_code="GAME_NOT_FOUND", details={"game_id": game_id})
     return game
 
+@app.post("/games/by-ids")
+def read_games_by_ids(game_ids: List[int], db: Session = Depends(get_db)):
+    games = db.query(Game).filter(Game.id.in_(game_ids)).all()
+    if not games:
+        create_error(status_code=404, error_code="NO_GAMES_AVAILABLE", details={"game_ids": game_ids})
+    return games
 
 @app.get("/game_by_ean/{ean}")
 def read_game(ean: int, db: Session = Depends(get_db)):
@@ -197,13 +205,13 @@ def add_ean(game_id: int, request: AddEANRequest, db: Session = Depends(get_db),
             },
         )
 
-    try:
-        updated_textarea_content = add_ean_bgg(bgg_username, bgg_password, game.bgg_id, request.ean)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    #try:
+    #    updated_textarea_content = add_ean_bgg(bgg_username, bgg_password, game.bgg_id, request.ean)
+    #except Exception as e:
+    #    raise HTTPException(status_code=500, detail=str(e))
 
+    #game.private_comment = updated_textarea_content
     game.ean = request.ean
-    game.private_comment = updated_textarea_content
     db.commit()
     db.refresh(game)
 
@@ -246,3 +254,12 @@ def fetch_private_collection(db: Session = Depends(get_db), current_user: User =
         return collection
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/fetch_tags")
+def fetch_tags(db: Session = Depends(get_db), current_user: User = Depends(get_admin_user)):
+    try:
+        collection = update_tags_logic()
+        return collection
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+

@@ -117,7 +117,7 @@ def fetch_collection(username: str, cookies: dict, retry_interval=5, max_retries
 
 def fetch_game_descriptions(game_ids, max_retries=5, retry_interval=5):
     """
-    Holt die Beschreibung (Description) und das Mindestalter (player_age) von Spielen aus der BGG-API.
+    Holt die Beschreibung (Description) von Spielen aus der BGG-API.
 
     Args:
         game_ids (list[int]): Eine Liste von BGG-IDs der Spiele.
@@ -125,7 +125,7 @@ def fetch_game_descriptions(game_ids, max_retries=5, retry_interval=5):
         retry_interval (int): Wartezeit (in Sekunden) zwischen den Wiederholungen.
 
     Returns:
-        dict: Ein Dictionary mit BGG-IDs als Schlüssel und deren Description und player_age als Werte.
+        dict: Ein Dictionary mit BGG-IDs als Schlüssel und deren Description als Wert.
     """
     descriptions = {}
     base_url = "https://boardgamegeek.com/xmlapi2/thing"
@@ -143,8 +143,7 @@ def fetch_game_descriptions(game_ids, max_retries=5, retry_interval=5):
                     for item in soup.find_all("item"):
                         bgg_id = int(item["id"])
                         description = item.find("description").text if item.find("description") else None
-                        player_age = int(item.find("minage")["value"]) if item.find("minage") else None
-                        descriptions[bgg_id] = {"description": description, "player_age": player_age}
+                        descriptions[bgg_id] = description
                     break  # API-Request erfolgreich, nächste Chunk
                 else:
                     print(f"⏳ Daten für Spiele {chunk} nicht bereit. Neuer Versuch in {retry_interval} Sekunden...")
@@ -167,15 +166,12 @@ def parse_collection(xml_data):
         "name": None,
         "description" : None,
         "german_description" : None,
-        "tags" : None,
-        "similar_games" : None,
         "year_published": None,
         "min_players": None,
         "max_players": None,
         "min_playtime": None,
         "max_playtime": None,
         "playing_time": None,
-        "player_age": None,
         "rating": None,
         "img_url": None,
         "thumbnail_url": None,
@@ -263,19 +259,15 @@ def add_games_to_db(games):
                         updated = True
                 # Aktualisiere die Description, falls vorhanden
                 if bgg_id in descriptions:
-                    desc = descriptions[bgg_id]
-                    if existing_game.description != desc["description"]:
-                        existing_game.description = desc["description"]
-                        updated = True
-                    if existing_game.player_age != desc["player_age"]:
-                        existing_game.player_age = desc["player_age"]
+                    if existing_game.description != descriptions[bgg_id]:
+                        existing_game.description = descriptions[bgg_id]
                         updated = True
                 if updated:
                     print(f"🔄 Spiel aktualisiert: {existing_game.name} (BGG ID: {existing_game.bgg_id})")
             else:
                 # Spiel existiert noch nicht, füge es hinzu
                 try:
-                    new_game_data.update(descriptions.get(bgg_id, {}))
+                    new_game_data["description"] = descriptions.get(bgg_id)
                     new_game = Game(**new_game_data)
                     db.add(new_game)
                     print(f"➕ Neues Spiel hinzugefügt: {new_game_data['name']} (BGG ID: {new_game_data['bgg_id']})")

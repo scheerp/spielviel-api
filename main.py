@@ -4,15 +4,18 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from datetime import timedelta
 from database import engine, Base, SessionLocal
-from models import Game, User
+from models import Game, User, GameResponse, GameSimilarity, GameResponseWithSimilarGames
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.orm import joinedload
 from auth import hash_password, create_access_token, verify_password, ACCESS_TOKEN_EXPIRE_MINUTES, get_current_user
 from pydantic import BaseModel
 from sqlalchemy import asc
 from typing import List
 from fetch_and_store_private import fetch_and_store_private
-from fetch_and_store_tags import update_tags_logic
+from fetch_and_store_tags import save_tags_to_db
+from similar_games import update_similar_games, get_top_similar_game_ids
 from add_ean_bgg import add_ean_bgg
+from database import Base, engine
 
 # Fehlercodes zentral definieren
 ERROR_CODES = {
@@ -27,7 +30,6 @@ ERROR_CODES = {
 }
 
 Base.metadata.create_all(bind=engine)
-
 
 app = FastAPI()
 
@@ -114,43 +116,68 @@ def create_game(name: str, ean: str, img_url: str = None, is_available: bool = T
     return game
 
 
-@app.get("/games")
+@app.get("/games", response_model=List[GameResponse])
 def read_all_games(db: Session = Depends(get_db)):
-    games = db.query(Game).order_by(asc(Game.name)).all()
+    games = db.query(Game).options(joinedload(Game.tags)).order_by(asc(Game.name)).all()
     if not games:
         create_error(status_code=404, error_code="NO_GAMES_AVAILABLE")
     return games
 
-
-@app.get("/available_games")
+@app.get("/available_games", response_model=List[GameResponse])
 def read_all_available_games(db: Session = Depends(get_db)):
-    games = db.query(Game).filter(Game.available > 0).all()
+    games = db.query(Game).options(joinedload(Game.tags)).filter(Game.available > 0).all()
     if not games:
         create_error(status_code=404, error_code="NO_GAMES_AVAILABLE")
     return games
 
-
-@app.get("/game/{game_id}")
+@app.get("/game/{game_id}", response_model=GameResponseWithSimilarGames)
 def read_game(game_id: int, db: Session = Depends(get_db)):
-    game = db.query(Game).filter(Game.id == game_id).first()
-    if game is None:
-        create_error(status_code=404, error_code="GAME_NOT_FOUND", details={"game_id": game_id})
-    return game
+    game = (
+        db.query(Game)
+        .options(joinedload(Game.tags), joinedload(Game.similar_games))
+        .filter(Game.id == game_id)
+        .first()
+    )
+    if not game:
+        raise HTTPException(status_code=404, detail=f"Game with ID {game_id} not found.")
 
-@app.post("/games/by-ids")
+    top_similar_ids = get_top_similar_game_ids(game.similar_games)
+
+    return {
+        **game.__dict__,
+        "tags": game.tags,
+        "similar_games": top_similar_ids  # Nur IDs der 5 ähnlichsten Spiele
+    }
+
+@app.post("/games/by-ids", response_model=List[GameResponse])
 def read_games_by_ids(game_ids: List[int], db: Session = Depends(get_db)):
-    games = db.query(Game).filter(Game.id.in_(game_ids)).all()
+    games = db.query(Game).options(joinedload(Game.tags)).filter(Game.id.in_(game_ids)).all()
     if not games:
         create_error(status_code=404, error_code="NO_GAMES_AVAILABLE", details={"game_ids": game_ids})
     return games
 
-@app.get("/game_by_ean/{ean}")
-def read_game(ean: int, db: Session = Depends(get_db)):
-    game = db.query(Game).filter(Game.ean == ean).first()
-    if game is None:
+@app.get("/game_by_ean/{ean}", response_model=GameResponse)
+def read_game_by_ean(ean: int, db: Session = Depends(get_db)):
+    game = db.query(Game).options(joinedload(Game.tags)).filter(Game.ean == ean).first()
+    if not game:
         create_error(status_code=404, error_code="GAME_NOT_FOUND", details={"ean": ean})
     return game
 
+@app.get("/game/{game_id}/similar_games")
+def get_similar_games(game_id: int, db: Session = Depends(get_db)):
+    similar_games = db.query(GameSimilarity).filter(GameSimilarity.game_id == game_id).order_by(
+        GameSimilarity.similarity_score.desc()
+    ).all()
+
+    return [
+        {
+            "game_id": sim.similar_game_id,
+            "similarity_score": sim.similarity_score,
+            "shared_tags_count": sim.shared_tags_count,
+            "tag_priority_sum": sim.tag_priority_sum,
+        }
+        for sim in similar_games
+    ]
 
 @app.put("/borrow_game/{game_id}")
 def borrow_game(game_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_admin_user)):
@@ -256,10 +283,24 @@ def fetch_private_collection(db: Session = Depends(get_db), current_user: User =
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/fetch_tags")
-def fetch_tags(db: Session = Depends(get_db), current_user: User = Depends(get_admin_user)):
+def fetch_tags_endpoint(db: Session = Depends(get_db), current_user=Depends(get_admin_user)):
+    """
+    Endpoint to fetch tags from external sources and save them in the database.
+    """
     try:
-        collection = update_tags_logic()
-        return collection
+        save_tags_to_db()
+        return {"message": "Tags fetched and saved successfully."}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Error updating tags: {str(e)}")
 
+
+@app.post("/update_similar_games")
+def update_similar_games_endpoint(db: Session = Depends(get_db), current_user=Depends(get_admin_user)):
+    """
+    Endpoint to find and update similar games based on their tags.
+    """
+    try:
+        update_similar_games()
+        return {"message": "Similar games updated successfully."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error updating similar games: {str(e)}")

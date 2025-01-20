@@ -119,18 +119,30 @@ def create_game(name: str, ean: str, img_url: str = None, is_available: bool = T
 def read_all_games(
     db: Session = Depends(get_db),
     limit: int = Query(50, ge=1, description="Anzahl der Spiele pro Seite"),
-    offset: int = Query(0, ge=0, description="Startindex für die Spiele")
+    offset: int = Query(0, ge=0, description="Startindex für die Spiele"),
+    filter_text: str = Query(None, description="Filter nach Namen"),
+    show_available_only: bool = Query(False, description="Nur verfügbare Spiele anzeigen"),
+    min_player_count: int = Query(1, ge=1, description="Minimale Spieleranzahl")
 ):
-    games = (
-        db.query(Game)
-        .options(joinedload(Game.tags))  # Keine `similar_games`
-        .order_by(asc(Game.name))
-        .offset(offset)
-        .limit(limit)
-        .all()
-    )
+    query = db.query(Game).options(joinedload(Game.tags)).order_by(asc(Game.name))
+    
+    # Filter nach Namen
+    if filter_text:
+        query = query.filter(Game.name.ilike(f"%{filter_text}%"))
+
+    # Nur verfügbare Spiele
+    if show_available_only:
+        query = query.filter(Game.available > 0)
+
+    # Filter nach Spieleranzahl
+    query = query.filter(Game.max_players >= min_player_count)
+
+    # Pagination
+    games = query.offset(offset).limit(limit).all()
+
     if not games:
         create_error(status_code=404, error_code="NO_GAMES_AVAILABLE")
+
     return games
 
 @app.get("/available_games", response_model=List[GameResponse])

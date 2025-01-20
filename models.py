@@ -11,6 +11,9 @@ game_tags = Table(
     Column("tag_id", Integer, ForeignKey("tags.id"), primary_key=True),
 )
 
+class AddEANRequest(BaseModel):
+    ean: int
+
 class TagResponse(BaseModel):
     id: int
     normalized_tag: str

@@ -1,14 +1,13 @@
 import os
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, Query
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from datetime import timedelta
 from database import engine, Base, SessionLocal
-from models import Game, User, GameResponse, GameSimilarity, GameResponseWithSimilarGames
+from models import Game, User, GameResponse, GameSimilarity, GameResponseWithSimilarGames, AddEANRequest
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import joinedload
 from auth import hash_password, create_access_token, verify_password, ACCESS_TOKEN_EXPIRE_MINUTES, get_current_user
-from pydantic import BaseModel
 from sqlalchemy import asc
 from typing import List
 from fetch_and_store_private import fetch_and_store_private
@@ -117,8 +116,19 @@ def create_game(name: str, ean: str, img_url: str = None, is_available: bool = T
 
 
 @app.get("/games", response_model=List[GameResponse])
-def read_all_games(db: Session = Depends(get_db)):
-    games = db.query(Game).options(joinedload(Game.tags)).order_by(asc(Game.name)).all()
+def read_all_games(
+    db: Session = Depends(get_db),
+    limit: int = Query(50, ge=1, description="Anzahl der Spiele pro Seite"),
+    offset: int = Query(0, ge=0, description="Startindex für die Spiele")
+):
+    games = (
+        db.query(Game)
+        .options(joinedload(Game.tags))  # Keine `similar_games`
+        .order_by(asc(Game.name))
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
     if not games:
         create_error(status_code=404, error_code="NO_GAMES_AVAILABLE")
     return games
@@ -163,54 +173,87 @@ def read_game_by_ean(ean: int, db: Session = Depends(get_db)):
         create_error(status_code=404, error_code="GAME_NOT_FOUND", details={"ean": ean})
     return game
 
-@app.get("/game/{game_id}/similar_games")
-def get_similar_games(game_id: int, db: Session = Depends(get_db)):
-    similar_games = db.query(GameSimilarity).filter(GameSimilarity.game_id == game_id).order_by(
-        GameSimilarity.similarity_score.desc()
-    ).all()
+@app.get("/game/{game_id}", response_model=GameResponseWithSimilarGames)
+def read_game(game_id: int, db: Session = Depends(get_db)):
+    game = (
+        db.query(Game)
+        .options(joinedload(Game.tags), joinedload(Game.similar_games))
+        .filter(Game.id == game_id)
+        .first()
+    )
+    if not game:
+        raise HTTPException(status_code=404, detail=f"Game with ID {game_id} not found.")
 
-    return [
-        {
-            "game_id": sim.similar_game_id,
-            "similarity_score": sim.similarity_score,
-            "shared_tags_count": sim.shared_tags_count,
-            "tag_priority_sum": sim.tag_priority_sum,
-        }
-        for sim in similar_games
-    ]
+    top_similar_ids = get_top_similar_game_ids(game.similar_games)
+
+    return {
+        **game.__dict__,
+        "tags": game.tags,
+        "similar_games": top_similar_ids
+    }
 
 @app.put("/borrow_game/{game_id}")
-def borrow_game(game_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_admin_user)):
-    game = db.query(Game).filter(Game.id == game_id).first()
+def borrow_game(
+    game_id: int, 
+    db: Session = Depends(get_db), 
+    current_user: User = Depends(get_admin_user)
+):
+    # Spiel abrufen
+    game = db.query(Game).options(joinedload(Game.similar_games)).filter(Game.id == game_id).first()
     if game is None:
         create_error(status_code=404, error_code="GAME_NOT_FOUND", details={"game_id": game_id})
+
+    # Verfügbarkeit prüfen und aktualisieren
     if game.available > 0:
         game.available -= 1
         game.borrow_count += 1
     else:
         create_error(status_code=400, error_code="NO_COPIES_AVAILABLE")
+
     db.commit()
     db.refresh(game)
-    return game
+
+    # Ähnliche Spiele berechnen
+    top_similar_ids = get_top_similar_game_ids(game.similar_games)
+
+    # Rückgabe des aktualisierten Spiels mit ähnlichen Spielen
+    return {
+        **game.__dict__,
+        "tags": game.tags,
+        "similar_games": top_similar_ids  # IDs der 5 ähnlichsten Spiele
+    }
 
 
 @app.put("/return_game/{game_id}")
-def return_game(game_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_admin_user)):
-    game = db.query(Game).filter(Game.id == game_id).first()
+def return_game(
+    game_id: int, 
+    db: Session = Depends(get_db), 
+    current_user: User = Depends(get_admin_user)
+):
+    # Spiel abrufen
+    game = db.query(Game).options(joinedload(Game.similar_games)).filter(Game.id == game_id).first()
     if game is None:
         create_error(status_code=404, error_code="GAME_NOT_FOUND", details={"game_id": game_id})
+
+    # Verfügbarkeit prüfen und aktualisieren
     if game.available < game.quantity:
         game.available += 1
     else:
         create_error(status_code=400, error_code="ALL_COPIES_AVAILABLE")
         game.available = game.quantity
+
     db.commit()
     db.refresh(game)
-    return game
 
+    # Ähnliche Spiele berechnen
+    top_similar_ids = get_top_similar_game_ids(game.similar_games)
 
-class AddEANRequest(BaseModel):
-    ean: int
+    # Rückgabe des aktualisierten Spiels mit ähnlichen Spielen
+    return {
+        **game.__dict__,
+        "tags": game.tags,
+        "similar_games": top_similar_ids  # IDs der 5 ähnlichsten Spiele
+    }
 
 
 @app.put("/add_ean/{game_id}")

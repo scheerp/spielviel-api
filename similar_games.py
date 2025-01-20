@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from database import SessionLocal
 from random import shuffle
 
-def get_top_similar_game_ids(similar_games: List[GameSimilarity], limit: int = 5) -> List[int]:
+def get_top_similar_game_ids(similar_games: List[GameSimilarity], limit: int = 6) -> List[int]:
     """
     Liefert die IDs der `limit` ähnlichsten Spiele basierend auf similarity_score.
     Bei gleicher similarity_score werden Spiele zufällig gemischt.
@@ -34,9 +34,9 @@ def get_top_similar_game_ids(similar_games: List[GameSimilarity], limit: int = 5
     # Beschränke die Liste auf maximal `limit` IDs
     return top_similar_ids[:limit]
 
-def find_similar_games_for_game(game: Game, session: Session) -> List[Tuple[int, float, int, float]]:
+def find_similar_games_for_game(game: Game, session: Session, limit: int = 10) -> List[Tuple[int, float, int, float]]:
     """
-    Findet ähnliche Spiele basierend auf geteilten Tags.
+    Findet bis zu `limit` ähnliche Spiele basierend auf geteilten Tags.
     Gibt eine Liste von Tupeln zurück: (similar_game_id, similarity_score, shared_tags_count, tag_priority_sum).
     """
     current_tags = {tag.id: tag.priority for tag in game.tags} if game.tags else {}
@@ -62,12 +62,14 @@ def find_similar_games_for_game(game: Game, session: Session) -> List[Tuple[int,
     # Sortieren: Ähnlichkeitswert (absteigend), dann ID (aufsteigend)
     similarity_scores.sort(key=lambda x: (-x[1], x[0]))
 
-    return similarity_scores
+    # Begrenzen auf die Top `limit` Ergebnisse
+    return similarity_scores[:limit]
 
 
-def update_similar_games():
+def update_similar_games(max_similar_games: int = 10):
     """
     Aktualisiert die Ähnlichkeit zwischen allen Spielen und speichert die Ergebnisse in der Tabelle `game_similarities`.
+    Begrenze die Anzahl ähnlicher Spiele pro Spiel auf `max_similar_games`.
     """
     session = SessionLocal()
     try:
@@ -79,8 +81,8 @@ def update_similar_games():
         for game in games:
             print(f"Updating similar games for {game.name}")
 
-            # Finde ähnliche Spiele
-            similar_games_with_scores = find_similar_games_for_game(game, session)
+            # Finde ähnliche Spiele (begrenzt auf `max_similar_games`)
+            similar_games_with_scores = find_similar_games_for_game(game, session, limit=max_similar_games)
 
             # Speichere Ähnlichkeiten in der Datenbank
             for similar_game_id, score, shared_tags_count, tag_priority_sum in similar_games_with_scores:
@@ -94,7 +96,7 @@ def update_similar_games():
                 session.add(similarity_entry)
 
         session.commit()
-        print("Similar games updated for all games.")
+        print(f"Similar games updated for all games (limited to {max_similar_games} per game).")
     except Exception as e:
         print(f"Error updating similar games: {e}")
         session.rollback()

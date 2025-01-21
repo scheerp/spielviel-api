@@ -168,7 +168,7 @@ def read_game(game_id: int, db: Session = Depends(get_db)):
     return {
         **game.__dict__,
         "tags": game.tags,
-        "similar_games": top_similar_ids  # Nur IDs der 5 ähnlichsten Spiele
+        "similar_games": top_similar_ids
     }
 
 @app.post("/games/by-ids", response_model=List[GameResponse])
@@ -184,25 +184,6 @@ def read_game_by_ean(ean: int, db: Session = Depends(get_db)):
     if not game:
         create_error(status_code=404, error_code="GAME_NOT_FOUND", details={"ean": ean})
     return game
-
-@app.get("/game/{game_id}", response_model=GameResponseWithSimilarGames)
-def read_game(game_id: int, db: Session = Depends(get_db)):
-    game = (
-        db.query(Game)
-        .options(joinedload(Game.tags), joinedload(Game.similar_games))
-        .filter(Game.id == game_id)
-        .first()
-    )
-    if not game:
-        raise HTTPException(status_code=404, detail=f"Game with ID {game_id} not found.")
-
-    top_similar_ids = get_top_similar_game_ids(game.similar_games)
-
-    return {
-        **game.__dict__,
-        "tags": game.tags,
-        "similar_games": top_similar_ids
-    }
 
 @app.put("/borrow_game/{game_id}")
 def borrow_game(

@@ -32,8 +32,7 @@ class SimilarGameResponse(BaseModel):
     class Config:
         from_attributes = True
 
-
-class GameResponseWithSimilarGames(BaseModel):
+class GameResponseWithDetails(BaseModel):
     id: int
     bgg_id: int
     name: str
@@ -47,7 +46,6 @@ class GameResponseWithSimilarGames(BaseModel):
     min_playtime: Optional[int]
     max_playtime: Optional[int]
     playing_time: Optional[int]
-    player_age: Optional[int]
     rating: Optional[float]
     ean: Optional[int]
     available: int
@@ -58,7 +56,11 @@ class GameResponseWithSimilarGames(BaseModel):
     private_comment: Optional[str]
     img_url: Optional[str]
     thumbnail_url: Optional[str]
-    test: Optional[str]
+    player_age: Optional[int]
+    complexity: Optional[float]
+    best_playercount: Optional[int]
+    min_recommended_playercount: Optional[int]
+    max_recommended_playercount: Optional[int]
 
     class Config:
         from_attributes = True
@@ -67,27 +69,21 @@ class GameResponse(BaseModel):
     id: int
     bgg_id: int
     name: str
-    description: Optional[str]
-    german_description: Optional[str]
-    tags: List[TagResponse]
-    year_published: Optional[int]
     min_players: Optional[int]
     max_players: Optional[int]
     min_playtime: Optional[int]
     max_playtime: Optional[int]
-    playing_time: Optional[int]
-    player_age: Optional[int]
-    rating: Optional[float]
     ean: Optional[int]
     available: int
     borrow_count: int
     quantity: int
-    acquired_from: Optional[str]
-    inventory_location: Optional[str]
-    private_comment: Optional[str]
     img_url: Optional[str]
     thumbnail_url: Optional[str]
-    test: Optional[str]
+    player_age: Optional[int]
+    complexity: Optional[float]
+    best_playercount: Optional[int]
+    min_recommended_playercount: Optional[int]
+    max_recommended_playercount: Optional[int]
 
     class Config:
         from_attributes = True
@@ -126,7 +122,6 @@ class Game(Base):
     min_playtime = Column(Integer, nullable=True)
     max_playtime = Column(Integer, nullable=True)
     playing_time = Column(Integer, nullable=True)
-    player_age = Column(Integer, nullable=True)
     rating = Column(Float, nullable=True)
     ean = Column(Integer, unique=True, nullable=True)
     available = Column(Integer, default=1)
@@ -137,7 +132,11 @@ class Game(Base):
     private_comment = Column(String, nullable=True)
     img_url = Column(String, nullable=True)
     thumbnail_url = Column(String, nullable=True)
-    test = Column(String, nullable=True)
+    player_age = Column(Integer, nullable=True)
+    complexity = Column(Float, nullable=True)
+    best_playercount = Column(Integer, nullable=True)
+    min_recommended_playercount = Column(Integer, nullable=True)
+    max_recommended_playercount = Column(Integer, nullable=True)
 
 class User(Base):
     __tablename__ = 'users'

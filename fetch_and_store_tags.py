@@ -28,7 +28,7 @@ def fetch_tags_with_retry(bgg_id: int, retries: int = 3, delay: float = 2.0) -> 
 def save_tags_to_db():
     session = SessionLocal()
     try:
-        # Alle Tags einmal abrufen
+        # Alle Tags abrufen
         all_tags = get_all_tags(session)
         games = session.query(Game).all()
 
@@ -37,19 +37,45 @@ def save_tags_to_db():
 
             # Tags abrufen und normalisieren
             raw_tags = fetch_tags_with_retry(game.bgg_id)
-            normalized_tags = [
-                tag_entry for tag in raw_tags
-                for tag_entry in all_tags
-                if tag.lower() in (syn.lower() for syn in (tag_entry.synonyms.split(",") if tag_entry.synonyms else []))
-            ]
+            normalized_tags = []
 
-            # Existierende Tags entfernen und neue zuweisen
-            game.tags.clear()
-            for tag in set(normalized_tags):
-                game.tags.append(tag)
+            for tag in raw_tags:
+                for tag_entry in all_tags:
+                    synonyms = tag_entry.synonyms.split(",") if tag_entry.synonyms else []
+                    if tag.lower() in [syn.lower().strip() for syn in synonyms]:
+                        normalized_tags.append(tag_entry)
+                        print(f"Match found: Raw tag '{tag}' matched with '{tag_entry.normalized_tag}'")
+
+            # Zusätzliche Regeln anwenden
+            filtered_tags = []
+
+            # Regel 1: `Duel` nur, wenn max_players ≤ 2
+            for tag in normalized_tags:
+                if tag.normalized_tag.lower() == "duel":
+                    if game.max_players is None or game.max_players > 2:
+                        print(f"Skipping tag 'Duel' for game '{game.name}' (max_players > 2)")
+                        continue
+                filtered_tags.append(tag)
+
+            # Regel 2: Konflikt zwischen `Co-op` und `Competitive`
+            tag_names = [tag.normalized_tag.lower() for tag in filtered_tags]
+            if "co-op" in tag_names and "competitive" in tag_names:
+                print(f"Conflict in game '{game.name}': Removing 'Co-op' in favor of 'Competitive'")
+                filtered_tags = [tag for tag in filtered_tags if tag.normalized_tag.lower() != "co-op"]
+
+            # Entferne Duplikate
+            unique_tags = list(set(filtered_tags))
+
+            # Existierende Tags prüfen und nur neue zuweisen
+            existing_tag_ids = {tag.id for tag in game.tags}
+            new_tags = [tag for tag in unique_tags if tag.id not in existing_tag_ids]
+
+            # Tags zuweisen
+            game.tags.extend(new_tags)
 
             print(f"Tags updated for game {game.name}: {[tag.normalized_tag for tag in game.tags]}")
 
+        # Änderungen speichern
         session.commit()
         print("Tags updated successfully for all games.")
     except Exception as e:

@@ -16,13 +16,14 @@ from webdriver_manager.chrome import ChromeDriverManager
 import chromedriver_autoinstaller
 import os
 import json
+from typing import List, Dict
 
 
 def login_bgg(username, password):
     """
     Führt den Login bei BoardGameGeek durch und gibt eine aktive Session zurück.
     """
-    login_url = "https://boardgamegeek.com/login"  # Die Login-Seite
+    login_url = "https://boardgamegeek.com/login"
 
     chromedriver_autoinstaller.install()
 
@@ -88,9 +89,7 @@ def login_bgg(username, password):
     driver.quit()
 
     # Cookies in ein Dictionary umwandeln
-    session_cookies = {cookie['name']: cookie['value'] for cookie in cookies}
-
-    return session_cookies
+    return {cookie['name']: cookie['value'] for cookie in cookies}
 
 
 def fetch_collection(username: str, cookies: dict, retry_interval=5, max_retries=10):
@@ -115,26 +114,28 @@ def fetch_collection(username: str, cookies: dict, retry_interval=5, max_retries
 
     raise Exception("❌ Sammlung konnte nach mehreren Versuchen nicht abgerufen werden.")
 
-def fetch_game_descriptions(game_ids, max_retries=5, retry_interval=5):
+
+def fetch_game_details(game_ids: List[int], max_retries=5, retry_interval=5) -> Dict[int, dict]:
     """
-    Holt die Beschreibung (Description) von Spielen aus der BGG-API.
+    Holt die Details von Spielen aus der BGG-API, einschließlich Beschreibung, Altersangabe, Komplexität
+    und empfohlene Spieleranzahl.
 
     Args:
-        game_ids (list[int]): Eine Liste von BGG-IDs der Spiele.
+        game_ids (List[int]): Eine Liste von BGG-IDs der Spiele.
         max_retries (int): Maximale Anzahl von Wiederholungen, wenn die API keine Daten liefert.
         retry_interval (int): Wartezeit (in Sekunden) zwischen den Wiederholungen.
 
     Returns:
-        dict: Ein Dictionary mit BGG-IDs als Schlüssel und deren Description als Wert.
+        dict: Ein Dictionary mit BGG-IDs als Schlüssel und den erweiterten Details als Wert.
     """
-    descriptions = {}
+    details = {}
     base_url = "https://boardgamegeek.com/xmlapi2/thing"
 
     # Teile die Spiel-IDs in Gruppen von maximal 20 IDs (API-Limit pro Request)
     chunks = [game_ids[i:i + 20] for i in range(0, len(game_ids), 20)]
 
     for chunk in chunks:
-        params = {"id": ",".join(map(str, chunk))}
+        params = {"id": ",".join(map(str, chunk)), "stats": "1"}
         for attempt in range(max_retries):
             try:
                 response = requests.get(base_url, params=params)
@@ -142,9 +143,30 @@ def fetch_game_descriptions(game_ids, max_retries=5, retry_interval=5):
                     soup = BeautifulSoup(response.content, "lxml-xml")
                     for item in soup.find_all("item"):
                         bgg_id = int(item["id"])
-                        description = item.find("description").text if item.find("description") else None
-                        descriptions[bgg_id] = description
-                    break  # API-Request erfolgreich, nächste Chunk
+                        data = {
+                            "description": item.find("description").text if item.find("description") else None,
+                            "player_age": parse_safe_int(item.find("minage"), "value"),
+                            "complexity": parse_safe_float(item.find("averageweight"), "value"),
+                            "best_playercount": None,
+                            "min_recommended_playercount": None,
+                            "max_recommended_playercount": None,
+                        }
+
+                        # Empfohlene Spieleranzahl
+                        poll = item.find("poll", {"name": "suggested_numplayers"})
+                        if poll:
+                            results = poll.find_all("results")
+                            best_playercount = parse_best_playercount(results)
+                            if best_playercount is not None:
+                                data["best_playercount"] = best_playercount
+
+                            recommended_players = parse_recommended_players(results)
+                            if recommended_players:
+                                data["min_recommended_playercount"] = min(recommended_players)
+                                data["max_recommended_playercount"] = max(recommended_players)
+
+                        details[bgg_id] = data
+                    break
                 else:
                     print(f"⏳ Daten für Spiele {chunk} nicht bereit. Neuer Versuch in {retry_interval} Sekunden...")
                     time.sleep(retry_interval)
@@ -153,7 +175,92 @@ def fetch_game_descriptions(game_ids, max_retries=5, retry_interval=5):
         else:
             print(f"❌ Max. Versuche überschritten für Spiele {chunk}. Übersprungen.")
 
-    return descriptions
+    return details
+
+
+def parse_safe_int(element, attribute):
+    """
+    Sicheres Parsen eines Integer-Werts aus einem XML-Element.
+
+    Args:
+        element: Das XML-Element.
+        attribute: Der Attributname.
+
+    Returns:
+        int | None: Der Integer-Wert oder None.
+    """
+    if element and element.has_attr(attribute):
+        value = element[attribute]
+        try:
+            return int(value.replace("+", "").strip())  # Entferne '+' und Leerzeichen
+        except ValueError:
+            print(f"⚠️ Fehler beim Parsen von int: '{value}'")
+    return None
+
+
+def parse_safe_float(element, attribute):
+    """
+    Sicheres Parsen eines Float-Werts aus einem XML-Element.
+
+    Args:
+        element: Das XML-Element.
+        attribute: Der Attributname.
+
+    Returns:
+        float | None: Der Float-Wert oder None.
+    """
+    if element and element.has_attr(attribute):
+        value = element[attribute]
+        try:
+            return float(value.strip())
+        except ValueError:
+            print(f"⚠️ Fehler beim Parsen von float: '{value}'")
+    return None
+
+
+def parse_best_playercount(results):
+    """
+    Bestimme die empfohlene Spieleranzahl basierend auf den meisten Stimmen für "Best".
+
+    Args:
+        results: Eine Liste von XML-Elementen.
+
+    Returns:
+        int | None: Die empfohlene Spieleranzahl oder None.
+    """
+    try:
+        best_result = max(
+            results,
+            key=lambda r: int(r.find("result", {"value": "Best"})["numvotes"]),
+            default=None
+        )
+        if best_result:
+            return parse_safe_int(best_result, "numplayers")
+    except Exception as e:
+        print(f"⚠️ Fehler beim Bestimmen der empfohlenen Spieleranzahl: {e}")
+    return None
+
+
+def parse_recommended_players(results):
+    """
+    Extrahiere die Liste der empfohlenen Spieleranzahlen basierend auf "Recommended".
+
+    Args:
+        results: Eine Liste von XML-Elementen.
+
+    Returns:
+        List[int]: Eine Liste der empfohlenen Spieleranzahlen.
+    """
+    recommended = []
+    for r in results:
+        try:
+            if r.find("result", {"value": "Recommended"}):
+                numplayers = parse_safe_int(r, "numplayers")
+                if numplayers is not None:
+                    recommended.append(numplayers)
+        except Exception as e:
+            print(f"⚠️ Fehler beim Extrahieren der empfohlenen Spieleranzahlen: {e}")
+    return recommended
 
 
 def parse_collection(xml_data):
@@ -164,8 +271,8 @@ def parse_collection(xml_data):
     grouped_games = defaultdict(lambda: {
         "bgg_id": None,
         "name": None,
-        "description" : None,
-        "german_description" : None,
+        "description": None,
+        "german_description": None,
         "year_published": None,
         "min_players": None,
         "max_players": None,
@@ -179,9 +286,13 @@ def parse_collection(xml_data):
         "quantity": 1,
         "inventory_location": None,
         "ean": None,
-        "test": None,
         "acquired_from": None,
         "private_comment": None,
+        "player_age": None,
+        "complexity": None,
+        "best_playercount": None,
+        "min_recommended_playercount": None,
+        "max_recommended_playercount": None
     })
 
     for item in soup.find_all("item"):
@@ -227,6 +338,7 @@ def parse_collection(xml_data):
 
     return list(grouped_games.values())
 
+
 def add_games_to_db(games):
     """
     Fügt Spiele zur Datenbank hinzu oder aktualisiert vorhandene Spiele.
@@ -245,10 +357,13 @@ def add_games_to_db(games):
 
         # Sammle alle IDs für die Description-Abfrage
         all_game_ids = list(new_games_by_bgg_id.keys())
-        descriptions = fetch_game_descriptions(all_game_ids)
+        details = fetch_game_details(all_game_ids)
 
         # Aktualisiere existierende Spiele und füge neue Spiele hinzu
         for bgg_id, new_game_data in new_games_by_bgg_id.items():
+            if bgg_id in details:
+                new_game_data.update(details[bgg_id])
+
             if bgg_id in existing_games_by_bgg_id:
                 # Spiel existiert bereits, aktualisiere die Werte
                 existing_game = existing_games_by_bgg_id[bgg_id]
@@ -257,17 +372,11 @@ def add_games_to_db(games):
                     if value is not None and getattr(existing_game, key) != value:
                         setattr(existing_game, key, value)
                         updated = True
-                # Aktualisiere die Description, falls vorhanden
-                if bgg_id in descriptions:
-                    if existing_game.description != descriptions[bgg_id]:
-                        existing_game.description = descriptions[bgg_id]
-                        updated = True
                 if updated:
                     print(f"🔄 Spiel aktualisiert: {existing_game.name} (BGG ID: {existing_game.bgg_id})")
             else:
                 # Spiel existiert noch nicht, füge es hinzu
                 try:
-                    new_game_data["description"] = descriptions.get(bgg_id)
                     new_game = Game(**new_game_data)
                     db.add(new_game)
                     print(f"➕ Neues Spiel hinzugefügt: {new_game_data['name']} (BGG ID: {new_game_data['bgg_id']})")
@@ -288,6 +397,7 @@ def add_games_to_db(games):
         print(f"❌ Fehler beim Hinzufügen/Aktualisieren der Spiele in der Datenbank: {e}")
     finally:
         db.close()
+
 
 def fetch_and_store_private(username, password):
     print("🔒 Logging in to BoardGameGeek...")

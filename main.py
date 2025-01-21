@@ -4,7 +4,7 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from datetime import timedelta
 from database import engine, Base, SessionLocal
-from models import Game, User, GameResponse, GameSimilarity, GameResponseWithSimilarGames, AddEANRequest
+from models import Game, User, GameResponse, GameResponseWithDetails, AddEANRequest
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import joinedload
 from auth import hash_password, create_access_token, verify_password, ACCESS_TOKEN_EXPIRE_MINUTES, get_current_user
@@ -33,7 +33,6 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI()
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
-
 
 # Helper-Funktion für Fehler
 def create_error(status_code: int, error_code: str, details: dict = None):
@@ -152,7 +151,7 @@ def read_all_available_games(db: Session = Depends(get_db)):
         create_error(status_code=404, error_code="NO_GAMES_AVAILABLE")
     return games
 
-@app.get("/game/{game_id}", response_model=GameResponseWithSimilarGames)
+@app.get("/game/{game_id}", response_model=GameResponseWithDetails)
 def read_game(game_id: int, db: Session = Depends(get_db)):
     game = (
         db.query(Game)
@@ -319,7 +318,8 @@ def fetch_private_collection(db: Session = Depends(get_db), current_user: User =
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/fetch_tags")
-def fetch_tags_endpoint(db: Session = Depends(get_db), current_user=Depends(get_admin_user)):
+#def fetch_tags_endpoint(db: Session = Depends(get_db), current_user=Depends(get_admin_user)):
+def fetch_tags_endpoint(db: Session = Depends(get_db)):
     """
     Endpoint to fetch tags from external sources and save them in the database.
     """
@@ -331,7 +331,8 @@ def fetch_tags_endpoint(db: Session = Depends(get_db), current_user=Depends(get_
 
 
 @app.post("/update_similar_games")
-def update_similar_games_endpoint(db: Session = Depends(get_db), current_user=Depends(get_admin_user)):
+#def update_similar_games_endpoint(db: Session = Depends(get_db), current_user=Depends(get_admin_user)):
+def update_similar_games_endpoint(db: Session = Depends(get_db)):
     """
     Endpoint to find and update similar games based on their tags.
     """

@@ -88,6 +88,13 @@ class GameResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class GamesWithCountResponse(BaseModel):
+    games: List[GameResponse]
+    total: int
+
+    class Config:
+        from_attributes = True
+
 class GameSimilarity(Base):
     __tablename__ = "game_similarities"
 

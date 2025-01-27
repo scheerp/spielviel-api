@@ -16,8 +16,8 @@ from webdriver_manager.chrome import ChromeDriverManager
 import chromedriver_autoinstaller
 import os
 import json
+import html
 from typing import List, Dict
-
 
 def login_bgg(username, password):
     """
@@ -34,7 +34,6 @@ def login_bgg(username, password):
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--remote-debugging-port=9222")
 
-    # Pfad zum Chrome-Browser
     print("Chrome Binary Path:", os.getenv("CHROME_BINARY_PATH"))
     chrome_binary_path = os.getenv("CHROME_BINARY_PATH", "/usr/bin/google-chrome")
     if not os.path.exists(chrome_binary_path):
@@ -120,13 +119,7 @@ def fetch_game_details(game_ids: List[int], max_retries=5, retry_interval=5) -> 
     Holt die Details von Spielen aus der BGG-API, einschließlich Beschreibung, Altersangabe, Komplexität
     und empfohlene Spieleranzahl.
 
-    Args:
-        game_ids (List[int]): Eine Liste von BGG-IDs der Spiele.
-        max_retries (int): Maximale Anzahl von Wiederholungen, wenn die API keine Daten liefert.
-        retry_interval (int): Wartezeit (in Sekunden) zwischen den Wiederholungen.
-
-    Returns:
-        dict: Ein Dictionary mit BGG-IDs als Schlüssel und den erweiterten Details als Wert.
+    Hier wird zusätzlich die Beschreibung (sofern vorhanden) mit html.unescape() in echte Zeichen konvertiert.
     """
     details = {}
     base_url = "https://boardgamegeek.com/xmlapi2/thing"
@@ -143,8 +136,14 @@ def fetch_game_details(game_ids: List[int], max_retries=5, retry_interval=5) -> 
                     soup = BeautifulSoup(response.content, "lxml-xml")
                     for item in soup.find_all("item"):
                         bgg_id = int(item["id"])
+
+                        # Beschreibung auslesen und HTML-Entities decodieren
+                        desc_element = item.find("description")
+                        raw_desc = desc_element.text if desc_element else None
+                        unescaped_desc = html.unescape(raw_desc) if raw_desc else None
+
                         data = {
-                            "description": item.find("description").text if item.find("description") else None,
+                            "description": unescaped_desc,  # <-- Beschreibung bereits dekodiert
                             "player_age": parse_safe_int(item.find("minage"), "value"),
                             "complexity": parse_safe_float(item.find("averageweight"), "value"),
                             "best_playercount": None,
@@ -181,13 +180,6 @@ def fetch_game_details(game_ids: List[int], max_retries=5, retry_interval=5) -> 
 def parse_safe_int(element, attribute):
     """
     Sicheres Parsen eines Integer-Werts aus einem XML-Element.
-
-    Args:
-        element: Das XML-Element.
-        attribute: Der Attributname.
-
-    Returns:
-        int | None: Der Integer-Wert oder None.
     """
     if element and element.has_attr(attribute):
         value = element[attribute]
@@ -201,13 +193,6 @@ def parse_safe_int(element, attribute):
 def parse_safe_float(element, attribute):
     """
     Sicheres Parsen eines Float-Werts aus einem XML-Element.
-
-    Args:
-        element: Das XML-Element.
-        attribute: Der Attributname.
-
-    Returns:
-        float | None: Der Float-Wert oder None.
     """
     if element and element.has_attr(attribute):
         value = element[attribute]
@@ -221,12 +206,6 @@ def parse_safe_float(element, attribute):
 def parse_best_playercount(results):
     """
     Bestimme die empfohlene Spieleranzahl basierend auf den meisten Stimmen für "Best".
-
-    Args:
-        results: Eine Liste von XML-Elementen.
-
-    Returns:
-        int | None: Die empfohlene Spieleranzahl oder None.
     """
     try:
         best_result = max(
@@ -244,12 +223,6 @@ def parse_best_playercount(results):
 def parse_recommended_players(results):
     """
     Extrahiere die Liste der empfohlenen Spieleranzahlen basierend auf "Recommended".
-
-    Args:
-        results: Eine Liste von XML-Elementen.
-
-    Returns:
-        List[int]: Eine Liste der empfohlenen Spieleranzahlen.
     """
     recommended = []
     for r in results:
@@ -329,7 +302,6 @@ def parse_collection(xml_data):
                     # Extrahiere nur den JSON-Teil nach dem Zeilenumbruch
                     json_part = private_comment_text.split("\n")[-1].strip()
                     
-                    # Versuche, nur den JSON-Teil zu parsen
                     try:
                         private_comment_json = json.loads(json_part)
                         game.update(private_comment_json)
@@ -342,9 +314,6 @@ def parse_collection(xml_data):
 def add_games_to_db(games):
     """
     Fügt Spiele zur Datenbank hinzu oder aktualisiert vorhandene Spiele.
-
-    Args:
-        games (list[dict]): Eine Liste von Spielen mit ihren Eigenschaften.
     """
     db: Session = SessionLocal()
     try:
@@ -357,15 +326,18 @@ def add_games_to_db(games):
 
         # Sammle alle IDs für die Description-Abfrage
         all_game_ids = list(new_games_by_bgg_id.keys())
+
+        # Hier werden Spiel-Details geholt und bereits mit html.unescape() dekodiert
         details = fetch_game_details(all_game_ids)
 
         # Aktualisiere existierende Spiele und füge neue Spiele hinzu
         for bgg_id, new_game_data in new_games_by_bgg_id.items():
+            # Füge die (dekodierten) Details hinzu, falls vorhanden
             if bgg_id in details:
                 new_game_data.update(details[bgg_id])
 
             if bgg_id in existing_games_by_bgg_id:
-                # Spiel existiert bereits, aktualisiere die Werte
+                # Spiel existiert bereits -> aktualisieren
                 existing_game = existing_games_by_bgg_id[bgg_id]
                 updated = False
                 for key, value in new_game_data.items():
@@ -375,7 +347,7 @@ def add_games_to_db(games):
                 if updated:
                     print(f"🔄 Spiel aktualisiert: {existing_game.name} (BGG ID: {existing_game.bgg_id})")
             else:
-                # Spiel existiert noch nicht, füge es hinzu
+                # Neues Spiel anlegen
                 try:
                     new_game = Game(**new_game_data)
                     db.add(new_game)

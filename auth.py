@@ -3,7 +3,6 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from database import SessionLocal
 from models import User
 from dotenv import load_dotenv
 import os

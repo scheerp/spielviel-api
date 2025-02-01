@@ -8,10 +8,11 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     curl \
     unzip \
-    chromium-driver \
     wget \
+    chromium-driver \
     gnupg \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
 # Google Chrome installieren
 RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - && \

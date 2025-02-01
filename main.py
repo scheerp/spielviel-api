@@ -1,9 +1,7 @@
-import os
 from fastapi import FastAPI, Depends, HTTPException, status, Query
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from datetime import timedelta
-from database import engine, Base, SessionLocal
 from models import Game, User, GameResponse, GameResponseWithDetails, AddEANRequest, GamesWithCountResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import joinedload
@@ -15,7 +13,8 @@ from fetch_and_store_tags import save_tags_to_db
 from similar_games import update_similar_games, get_top_similar_game_ids
 from apply_filters import apply_game_filters
 from add_ean_bgg import add_ean_bgg
-from database import Base, engine
+from database import engine, Base, SessionLocal
+import os
 
 # Fehlercodes zentral definieren
 ERROR_CODES = {
@@ -46,7 +45,6 @@ def create_error(status_code: int, error_code: str, details: dict = None):
             "details": details or {}
         }
     )
-
 
 # Abhängigkeit zur Datenbank-Sitzung
 def get_db():

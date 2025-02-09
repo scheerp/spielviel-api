@@ -22,10 +22,16 @@ ERROR_CODES = {
     "NO_GAMES_AVAILABLE": {"message": "Es sind keine Spiele verfügbar."},
     "BARCODE_CONFLICT": {"message": "Der EAN ist bereits einem anderen Spiel zugeordnet."},
     "NOT_AUTHORIZED": {"message": "Benutzer ist nicht autorisiert."},
-    "PERMISSION_DENIED": {"message": "Keine Admin-Berechtigung."},
+    "PERMISSION_DENIED": {"message": "Keine Berechtigung."},
     "NO_COPIES_AVAILABLE": {"message": "Es sind keine verfügbaren Kopien vorhanden."},
     "ALL_COPIES_AVAILABLE": {"message": "Alle verfügbaren Kopien bereits zurückgegeben."},
     "USER_ALREADY_EXISTS": {"message": "Der Benutzername ist bereits vergeben."},
+}
+
+ROLE_PERMISSIONS = {
+    "admin": ["helper", "guest", "admin"],  # Admins dürfen alles
+    "helper": ["helper", "guest"],  # Helpers haben begrenzte Rechte
+    "guest": ["guest"],  # Gäste haben noch weniger Rechte
 }
 
 Base.metadata.create_all(bind=engine)
@@ -65,7 +71,20 @@ app.add_middleware(
 
 bgg_username = os.getenv("BGG_USERNAME")
 bgg_password = os.getenv("BGG_PASSWORD")
-#fetch_and_store_private(bgg_username, bgg_password)
+
+def require_role(required_role: str):
+    """Factory-Funktion zur Generierung von Rollen-basierten Dependencies"""
+    def role_checker(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+        user = get_current_user(token, db)
+        if user.role not in ROLE_PERMISSIONS:
+            create_error(status_code=403, error_code="NOT_AUTHORIZED")
+
+        if required_role not in ROLE_PERMISSIONS[user.role]:
+            create_error(status_code=403, error_code="PERMISSION_DENIED")
+
+        return user  # ✅ Berechtigter User wird zurückgegeben
+
+    return role_checker
 
 @app.get("/")
 def read_root():
@@ -96,16 +115,9 @@ def register_user(username: str, password: str, db: Session = Depends(get_db)):
     return {"message": "User created successfully", "username": user.username}
 
 
-def get_admin_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
-    user = get_current_user(token, db)
-    if user.role != "admin":
-        create_error(status_code=status.HTTP_403_FORBIDDEN, error_code="PERMISSION_DENIED")
-    return user
-
-
 @app.post("/create_game/")
 def create_game(name: str, ean: str, img_url: str = None, is_available: bool = True, bgg_id: int = None,
-                db: Session = Depends(get_db), current_user: User = Depends(get_admin_user)):
+                db: Session = Depends(get_db), current_user: User = Depends(require_role("helper"))):
     game = Game(name=name, bgg_id=bgg_id, ean=ean, img_url=img_url, is_available=is_available)
     db.add(game)
     db.commit()
@@ -211,7 +223,7 @@ def read_game_by_ean(ean: int, db: Session = Depends(get_db)):
 def borrow_game(
     game_id: int, 
     db: Session = Depends(get_db), 
-    current_user: User = Depends(get_admin_user)
+    current_user: User = Depends(require_role("helper"))
 ):
     # Spiel abrufen
     game = db.query(Game).options(joinedload(Game.similar_games)).filter(Game.id == game_id).first()
@@ -243,7 +255,7 @@ def borrow_game(
 def return_game(
     game_id: int, 
     db: Session = Depends(get_db), 
-    current_user: User = Depends(get_admin_user)
+    current_user: User = Depends(require_role("helper"))
 ):
     # Spiel abrufen
     game = db.query(Game).options(joinedload(Game.similar_games)).filter(Game.id == game_id).first()
@@ -272,7 +284,7 @@ def return_game(
 
 
 @app.put("/add_ean/{game_id}")
-def add_ean(game_id: int, request: AddEANRequest, db: Session = Depends(get_db), current_user: User = Depends(get_admin_user)):
+def add_ean(game_id: int, request: AddEANRequest, db: Session = Depends(get_db), current_user: User = Depends(require_role("helper"))):
     game = db.query(Game).filter(Game.id == game_id).first()
     if game is None:
         create_error(status_code=404, error_code="GAME_NOT_FOUND", details={"game_id": game_id})
@@ -304,7 +316,7 @@ def add_ean(game_id: int, request: AddEANRequest, db: Session = Depends(get_db),
 
 
 @app.put("/borrow_game_ean/{game_ean}")
-def borrow_game_ean(game_ean: int, db: Session = Depends(get_db), current_user: User = Depends(get_admin_user)):
+def borrow_game_ean(game_ean: int, db: Session = Depends(get_db), current_user: User = Depends(require_role("helper"))):
     game = db.query(Game).filter(Game.ean == game_ean).first()
     if game is None:
         create_error(status_code=404, error_code="GAME_NOT_FOUND", details={"ean": game_ean})
@@ -319,7 +331,7 @@ def borrow_game_ean(game_ean: int, db: Session = Depends(get_db), current_user: 
 
 
 @app.put("/return_game_ean/{game_ean}")
-def return_game_ean(game_ean: int, db: Session = Depends(get_db), current_user: User = Depends(get_admin_user)):
+def return_game_ean(game_ean: int, db: Session = Depends(get_db), current_user: User = Depends(require_role("helper"))):
     game = db.query(Game).filter(Game.ean == game_ean).first()
     if game is None:
         create_error(status_code=404, error_code="GAME_NOT_FOUND", details={"ean": game_ean})
@@ -333,7 +345,7 @@ def return_game_ean(game_ean: int, db: Session = Depends(get_db), current_user: 
 
 
 @app.post("/fetch_private_collection")
-def fetch_private_collection(db: Session = Depends(get_db), current_user: User = Depends(get_admin_user)):
+def fetch_private_collection(db: Session = Depends(get_db), current_user: User = Depends(require_role("admin"))):
     try:
         collection = fetch_and_store_private(bgg_username, bgg_password)
         return collection
@@ -341,8 +353,7 @@ def fetch_private_collection(db: Session = Depends(get_db), current_user: User =
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/fetch_tags")
-#def fetch_tags_endpoint(db: Session = Depends(get_db), current_user=Depends(get_admin_user)):
-def fetch_tags_endpoint(db: Session = Depends(get_db)):
+def fetch_tags_endpoint(db: Session = Depends(get_db), current_user: User = Depends(require_role("admin"))):
     """
     Endpoint to fetch tags from external sources and save them in the database.
     """
@@ -354,8 +365,7 @@ def fetch_tags_endpoint(db: Session = Depends(get_db)):
 
 
 @app.post("/update_similar_games")
-#def update_similar_games_endpoint(db: Session = Depends(get_db), current_user=Depends(get_admin_user)):
-def update_similar_games_endpoint(db: Session = Depends(get_db)):
+def update_similar_games_endpoint(db: Session = Depends(get_db), current_user: User = Depends(require_role("admin"))):
     """
     Endpoint to find and update similar games based on their tags.
     """

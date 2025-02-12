@@ -9,7 +9,7 @@ COMPLEXITY_MAPPING = [
     {"label": "Beginner", "min": 1.5, "max": 2.2},
     {"label": "Intermediate", "min": 2.2, "max": 3},
     {"label": "Advanced", "min": 3, "max": 4},
-    {"label": "", "min": 4, "max": 5},
+    {"label": "Expert", "min": 4, "max": 5},
 ]
 
 def get_complexity_label(complexity: float) -> str:

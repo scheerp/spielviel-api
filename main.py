@@ -13,6 +13,7 @@ from fetch_and_store_tags import save_tags_to_db
 from similar_games import update_similar_games, get_top_similar_game_ids
 from helpers import apply_game_filters
 from database import engine, Base, SessionLocal
+from fetch_and_store_quick import fetch_and_store_quick
 import os
 
 # Fehlercodes zentral definieren
@@ -333,13 +334,24 @@ def return_game_ean(game_ean: int, db: Session = Depends(get_db), current_user: 
     return game
 
 
+@app.post("/fetch_private_collection_quick")
+def fetch_private_collection_quick(db: Session = Depends(get_db), current_user: User = Depends(require_role("helper"))):
+    try:
+
+        result = fetch_and_store_quick(bgg_username, fastMode=True)
+        return result  
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.post("/fetch_private_collection")
 def fetch_private_collection(db: Session = Depends(get_db), current_user: User = Depends(require_role("admin"))):
     try:
-        collection = fetch_and_store_private(bgg_username, bgg_password)
-        return collection
+        result = fetch_and_store_private(bgg_username, bgg_password)
+        return result  
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/fetch_tags")
 def fetch_tags_endpoint(db: Session = Depends(get_db), current_user: User = Depends(require_role("admin"))):

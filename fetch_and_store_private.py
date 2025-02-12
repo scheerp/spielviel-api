@@ -312,23 +312,21 @@ def parse_collection(xml_data):
 
 
 def add_games_to_db(games):
-    """
-    Fügt Spiele zur Datenbank hinzu oder aktualisiert vorhandene Spiele.
-    """
     db: Session = SessionLocal()
-    try:
-        # 🏗️ 1. Alle neuen Spiele als Dictionary mit bgg_id als Key speichern
-        new_games_by_bgg_id = {game["bgg_id"]: game for game in games}
+    added_count = 0
+    updated_count = 0
+    deleted_count = 0
 
-        # 🏗️ 2. Existierende Spiele aus der Datenbank holen
-        existing_games = db.query(Game).filter(Game.bgg_id.in_(new_games_by_bgg_id.keys())).all()
+    try:
+        new_games_by_bgg_id = {game["bgg_id"]: game for game in games}
+        
+        # Alle existierenden Spiele aus der DB abrufen
+        existing_games = db.query(Game).all()
         existing_games_by_bgg_id = {game.bgg_id: game for game in existing_games}
 
-        # 🏗️ 3. Spiel-Details abrufen
         all_game_ids = list(new_games_by_bgg_id.keys())
         details = fetch_game_details(all_game_ids)
 
-        # 🔄 4. Spiele aktualisieren oder neu einfügen
         for bgg_id, new_game_data in new_games_by_bgg_id.items():
             if bgg_id in details:
                 new_game_data.update(details[bgg_id])
@@ -336,7 +334,6 @@ def add_games_to_db(games):
             assign_complexity_label(new_game_data)
 
             if bgg_id in existing_games_by_bgg_id:
-                # 🔄 Aktualisiere das bestehende Spiel
                 existing_game = existing_games_by_bgg_id[bgg_id]
                 updated = False
 
@@ -346,33 +343,36 @@ def add_games_to_db(games):
                         updated = True
 
                 if updated:
+                    updated_count += 1
                     print(f"🔄 Spiel aktualisiert: {existing_game.name} (BGG ID: {existing_game.bgg_id})")
             else:
-                # ➕ Neues Spiel anlegen (‼️ WICHTIG: "id" entfernen)
                 try:
-                    new_game_data.pop("id", None)  # 🚨 Entferne "id", um UniqueViolation zu vermeiden
+                    new_game_data.pop("id", None)
                     new_game = Game(**new_game_data)
                     db.add(new_game)
+                    added_count += 1
                     print(f"➕ Neues Spiel hinzugefügt: {new_game_data['name']} (BGG ID: {new_game_data['bgg_id']})")
                 except Exception as e:
                     print(f"❌ Fehler beim Hinzufügen eines neuen Spiels: {e}")
-                    print(f"🔍 Daten des neuen Spiels: {new_game_data}")
 
-        # 🗑️ 5. Lösche Spiele, die nicht mehr in der Sammlung sind
+        # Lösche Spiele, die nicht mehr in der aktuellen Sammlung enthalten sind
         for existing_game in existing_games:
             if existing_game.bgg_id not in new_games_by_bgg_id:
                 db.delete(existing_game)
+                deleted_count += 1
                 print(f"🗑️ Spiel gelöscht: {existing_game.name} (BGG ID: {existing_game.bgg_id})")
 
-        # ✅ 6. Änderungen speichern
         db.commit()
+        return {"added": added_count, "updated": updated_count, "deleted": deleted_count}
 
     except Exception as e:
         db.rollback()
-        print(f"❌ Fehler beim Hinzufügen/Aktualisieren der Spiele in der Datenbank: {e}")
+        print(f"❌ Fehler beim Aktualisieren der Datenbank: {e}")
+        return {"added": 0, "updated": 0, "deleted": 0}
 
     finally:
         db.close()
+
 
 
 
@@ -390,8 +390,7 @@ def fetch_and_store_private(username, password):
     games = parse_collection(collection_xml)
 
     print("💾 Storing games in the database...")
-    add_games_to_db(games)
+    result = add_games_to_db(games)
 
     print("✅ Spiele erfolgreich abgerufen und in der Datenbank gespeichert.")
-
-    return games
+    return result  # Gibt jetzt eine Statistik zurück

@@ -13,6 +13,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
+from helpers import assign_complexity_label
 import chromedriver_autoinstaller
 import os
 import json
@@ -89,7 +90,6 @@ def login_bgg(username, password):
 
     # Cookies in ein Dictionary umwandeln
     return {cookie['name']: cookie['value'] for cookie in cookies}
-
 
 def fetch_collection(username: str, cookies: dict, retry_interval=5, max_retries=10):
     """
@@ -317,38 +317,40 @@ def add_games_to_db(games):
     """
     db: Session = SessionLocal()
     try:
-        # Erstelle ein Dictionary der neuen Spiele nach BGG-ID
+        # 🏗️ 1. Alle neuen Spiele als Dictionary mit bgg_id als Key speichern
         new_games_by_bgg_id = {game["bgg_id"]: game for game in games}
 
-        # Hole alle existierenden Spiele aus der Datenbank
-        existing_games = db.query(Game).all()
+        # 🏗️ 2. Existierende Spiele aus der Datenbank holen
+        existing_games = db.query(Game).filter(Game.bgg_id.in_(new_games_by_bgg_id.keys())).all()
         existing_games_by_bgg_id = {game.bgg_id: game for game in existing_games}
 
-        # Sammle alle IDs für die Description-Abfrage
+        # 🏗️ 3. Spiel-Details abrufen
         all_game_ids = list(new_games_by_bgg_id.keys())
-
-        # Hier werden Spiel-Details geholt und bereits mit html.unescape() dekodiert
         details = fetch_game_details(all_game_ids)
 
-        # Aktualisiere existierende Spiele und füge neue Spiele hinzu
+        # 🔄 4. Spiele aktualisieren oder neu einfügen
         for bgg_id, new_game_data in new_games_by_bgg_id.items():
-            # Füge die (dekodierten) Details hinzu, falls vorhanden
             if bgg_id in details:
                 new_game_data.update(details[bgg_id])
 
+            assign_complexity_label(new_game_data)
+
             if bgg_id in existing_games_by_bgg_id:
-                # Spiel existiert bereits -> aktualisieren
+                # 🔄 Aktualisiere das bestehende Spiel
                 existing_game = existing_games_by_bgg_id[bgg_id]
                 updated = False
+
                 for key, value in new_game_data.items():
-                    if value is not None and getattr(existing_game, key) != value:
+                    if key != "id" and value is not None and getattr(existing_game, key) != value:
                         setattr(existing_game, key, value)
                         updated = True
+
                 if updated:
                     print(f"🔄 Spiel aktualisiert: {existing_game.name} (BGG ID: {existing_game.bgg_id})")
             else:
-                # Neues Spiel anlegen
+                # ➕ Neues Spiel anlegen (‼️ WICHTIG: "id" entfernen)
                 try:
+                    new_game_data.pop("id", None)  # 🚨 Entferne "id", um UniqueViolation zu vermeiden
                     new_game = Game(**new_game_data)
                     db.add(new_game)
                     print(f"➕ Neues Spiel hinzugefügt: {new_game_data['name']} (BGG ID: {new_game_data['bgg_id']})")
@@ -356,19 +358,22 @@ def add_games_to_db(games):
                     print(f"❌ Fehler beim Hinzufügen eines neuen Spiels: {e}")
                     print(f"🔍 Daten des neuen Spiels: {new_game_data}")
 
-        # Lösche Spiele, die nicht mehr in der Sammlung sind
-        for bgg_id, existing_game in existing_games_by_bgg_id.items():
-            if bgg_id not in new_games_by_bgg_id:
+        # 🗑️ 5. Lösche Spiele, die nicht mehr in der Sammlung sind
+        for existing_game in existing_games:
+            if existing_game.bgg_id not in new_games_by_bgg_id:
                 db.delete(existing_game)
                 print(f"🗑️ Spiel gelöscht: {existing_game.name} (BGG ID: {existing_game.bgg_id})")
 
-        # Änderungen in der Datenbank speichern
+        # ✅ 6. Änderungen speichern
         db.commit()
+
     except Exception as e:
         db.rollback()
         print(f"❌ Fehler beim Hinzufügen/Aktualisieren der Spiele in der Datenbank: {e}")
+
     finally:
         db.close()
+
 
 
 def fetch_and_store_private(username, password):

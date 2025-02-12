@@ -58,6 +58,7 @@ class GameResponseWithDetails(BaseModel):
     thumbnail_url: Optional[str]
     player_age: Optional[int]
     complexity: Optional[float]
+    complexity_label: Optional[str]
     best_playercount: Optional[int]
     min_recommended_playercount: Optional[int]
     max_recommended_playercount: Optional[int]
@@ -81,6 +82,7 @@ class GameResponse(BaseModel):
     thumbnail_url: Optional[str]
     player_age: Optional[int]
     complexity: Optional[float]
+    complexity_label: Optional[str]
     best_playercount: Optional[int]
     min_recommended_playercount: Optional[int]
     max_recommended_playercount: Optional[int]
@@ -88,12 +90,14 @@ class GameResponse(BaseModel):
     class Config:
         from_attributes = True
 
+
 class GamesWithCountResponse(BaseModel):
     games: List[GameResponse]
     total: int
 
     class Config:
         from_attributes = True
+
 
 class GameSimilarity(Base):
     __tablename__ = "game_similarities"
@@ -108,11 +112,12 @@ class GameSimilarity(Base):
     game = relationship("Game", foreign_keys=[game_id], backref="similarities_from")
     similar_game = relationship("Game", foreign_keys=[similar_game_id], backref="similarities_to")
 
+
 class Game(Base):
     __tablename__ = "games"
 
-    id = Column(Integer, primary_key=True, index=True)
-    bgg_id = Column(Integer, nullable=False, index=True)
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    bgg_id = Column(Integer, nullable=False, unique=True, index=True)
     name = Column(String, nullable=False, index=True)
     description = Column(String, nullable=True)
     german_description = Column(String, nullable=True)
@@ -141,9 +146,11 @@ class Game(Base):
     thumbnail_url = Column(String, nullable=True)
     player_age = Column(Integer, nullable=True)
     complexity = Column(Float, nullable=True)
+    complexity_label = Column(String, nullable=True)
     best_playercount = Column(Integer, nullable=True)
     min_recommended_playercount = Column(Integer, nullable=True)
     max_recommended_playercount = Column(Integer, nullable=True)
+
 
 class User(Base):
     __tablename__ = 'users'
@@ -152,6 +159,7 @@ class User(Base):
     hashed_password = Column(String, nullable=False)
     is_active = Column(Boolean, default=True)
     role = Column(String, default="helper")
+
 
 class Tag(Base):
     __tablename__ = "tags"

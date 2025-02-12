@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Query
+from fastapi import FastAPI, Depends, HTTPException, status, Query, Body
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from datetime import timedelta
@@ -11,8 +11,7 @@ from typing import List
 from fetch_and_store_private import fetch_and_store_private
 from fetch_and_store_tags import save_tags_to_db
 from similar_games import update_similar_games, get_top_similar_game_ids
-from apply_filters import apply_game_filters
-from add_ean_bgg import add_ean_bgg
+from helpers import apply_game_filters
 from database import engine, Base, SessionLocal
 import os
 
@@ -124,22 +123,24 @@ def create_game(name: str, ean: str, img_url: str = None, is_available: bool = T
     db.refresh(game)
     return game
 
-# Endpunkt: Alle Spiele mit Pagination und Gesamtanzahl
+
 @app.get("/games", response_model=GamesWithCountResponse)
 def read_all_games(
     db: Session = Depends(get_db),
-    limit: int = Query(50, ge=1, description="Anzahl der Spiele pro Seite"),
-    offset: int = Query(0, ge=0, description="Startindex für die Spiele"),
-    filter_text: str = Query(None, description="Filter nach Namen"),
-    show_available_only: bool = Query(False, description="Nur verfügbare Spiele anzeigen"),
-    min_player_count: int = Query(1, ge=1, description="Minimale Spieleranzahl"),
-    player_age: int = Query(5, ge=0, description="Minimales Alter der Spieler")
+    limit: int = Query(50, ge=1),
+    offset: int = Query(0, ge=0),
+    filter_text: str = Query(None),
+    show_available_only: bool = Query(False),
+    min_player_count: int = Query(1, ge=1),
+    player_age: int = Query(5, ge=0),
+    show_missing_ean_only: bool = Query(False),
+    complexities: list[str] = Query(None, description="Liste von Complexity-Labels (z.B. ?complexities=einsteiger&complexities=fortgeschritten)")
 ):
     # Basisabfrage
     query = db.query(Game).options(joinedload(Game.tags)).order_by(asc(Game.name))
 
     # Filter anwenden
-    query = apply_game_filters(query, filter_text, show_available_only, min_player_count, player_age)
+    query = apply_game_filters(query, filter_text, show_available_only, min_player_count, player_age, show_missing_ean_only, complexities)
 
     # Gesamtanzahl der Spiele berechnen
     total_games = query.count()
@@ -147,14 +148,7 @@ def read_all_games(
     # Pagination anwenden
     games = query.offset(offset).limit(limit).all()
 
-    if not games:
-        create_error(status_code=404, error_code="NO_GAMES_AVAILABLE")
-
-    # Response mit Spielen und Gesamtanzahl
-    return {
-        "games": games,
-        "total": total_games
-    }
+    return {"games": games, "total": total_games}
 
 # Endpunkt: Nur die Gesamtanzahl der Spiele basierend auf den Filtern
 @app.get("/games/count")
@@ -163,7 +157,9 @@ def get_games_count(
     filter_text: str = Query(None, description="Filter nach Namen"),
     show_available_only: bool = Query(False, description="Nur verfügbare Spiele anzeigen"),
     min_player_count: int = Query(1, ge=1, description="Minimale Spieleranzahl"),
-    player_age: int = Query(5, ge=0, description="Minimales Alter der Spieler")
+    player_age: int = Query(5, ge=0, description="Minimales Alter der Spieler"),
+    show_missing_ean_only: bool = Query(False, description="Nur Spiele ohne ean anzeigen"),
+    complexities: list[str] = Query(None, description="Liste von Complexity-Labels (z.B. ?complexities=einsteiger&complexities=fortgeschritten)")
 ):
     """
     Gibt die Gesamtanzahl der Spiele basierend auf den aktuellen Filtern zurück.
@@ -172,19 +168,12 @@ def get_games_count(
     query = db.query(Game)
 
     # Filter anwenden
-    query = apply_game_filters(query, filter_text, show_available_only, min_player_count, player_age)
+    query = apply_game_filters(query,filter_text, show_available_only, min_player_count, player_age, show_missing_ean_only, complexities)
 
     # Gesamtanzahl berechnen
     total_count = query.count()
 
     return {"total_count": total_count}
-
-@app.get("/available_games", response_model=List[GameResponse])
-def read_all_available_games(db: Session = Depends(get_db)):
-    games = db.query(Game).options(joinedload(Game.tags)).filter(Game.available > 0).all()
-    if not games:
-        create_error(status_code=404, error_code="NO_GAMES_AVAILABLE")
-    return games
 
 @app.get("/game/{game_id}", response_model=GameResponseWithDetails)
 def read_game(game_id: int, db: Session = Depends(get_db)):

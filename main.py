@@ -96,10 +96,18 @@ def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db:
     if not user or not verify_password(form_data.password, user.hashed_password):
         create_error(status_code=status.HTTP_401_UNAUTHORIZED, error_code="NOT_AUTHORIZED")
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+
+    token_data = {
+        "id": user.id,
+        "sub": user.username,
+        "role": user.role
+    }
+
     access_token = create_access_token(
-        data={"sub": user.username}, expires_delta=access_token_expires
+        data=token_data,
+        expires_delta=access_token_expires
     )
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {"access_token": access_token, "token_type": "bearer", "role": user.role, "id": user.id}
 
 
 @app.post("/register")
@@ -337,8 +345,18 @@ def return_game_ean(game_ean: int, db: Session = Depends(get_db), current_user: 
 @app.post("/fetch_private_collection_quick")
 def fetch_private_collection_quick(db: Session = Depends(get_db), current_user: User = Depends(require_role("helper"))):
     try:
-
         result = fetch_and_store_quick(bgg_username, fastMode=True)
+        return result  
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+    
+@app.post("/fetch_complete_collection")
+def fetch_complete_collection(db: Session = Depends(get_db), current_user: User = Depends(require_role("admin"))):
+    try:
+        result = fetch_and_store_private(bgg_username, bgg_password)
+        save_tags_to_db()
+        update_similar_games()
         return result  
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

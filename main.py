@@ -299,14 +299,21 @@ def add_ean(game_id: int, request: AddEANRequest, db: Session = Depends(get_db),
                 "thumbnail_url": existing_game.thumbnail_url
             },
         )
-
-    #try:
-    #    updated_textarea_content = add_ean_bgg(bgg_username, bgg_password, game.bgg_id, request.ean)
-    #except Exception as e:
-    #    raise HTTPException(status_code=500, detail=str(e))
-
-    #game.private_comment = updated_textarea_content
     game.ean = request.ean
+    db.commit()
+    db.refresh(game)
+
+    return game
+
+
+@app.put("/remove_ean/{game_id}")
+def remove_ean(game_id: int, db: Session = Depends(get_db), current_user: User = Depends(require_role("admin"))):
+    game = db.query(Game).filter(Game.id == game_id).first()
+    if game is None:
+        create_error(status_code=404, error_code="GAME_NOT_FOUND", details={"game_id": game_id})
+
+
+    game.ean = None
     db.commit()
     db.refresh(game)
 

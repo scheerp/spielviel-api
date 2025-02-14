@@ -145,17 +145,21 @@ def read_all_games(
     show_missing_ean_only: bool = Query(False),
     complexities: list[str] = Query(None, description="Liste von Complexity-Labels (z.B. ?complexities=einsteiger&complexities=fortgeschritten)")
 ):
-    # Basisabfrage
     query = db.query(Game).options(joinedload(Game.tags)).order_by(asc(Game.name))
-
-    # Filter anwenden
     query = apply_game_filters(query, filter_text, show_available_only, min_player_count, player_age, show_missing_ean_only, complexities)
-
-    # Gesamtanzahl der Spiele berechnen
     total_games = query.count()
-
-    # Pagination anwenden
     games = query.offset(offset).limit(limit).all()
+
+    return {"games": games, "total": total_games}
+
+@app.get("/borrowed-games", response_model=GamesWithCountResponse)
+def read_borrowed_games(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("helper"))
+):
+    query = db.query(Game).options(joinedload(Game.tags)).filter(Game.borrow_count > 0).order_by(asc(Game.name))
+    total_games = query.count()
+    games = query.all()
 
     return {"games": games, "total": total_games}
 

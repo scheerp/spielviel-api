@@ -9,7 +9,7 @@ from auth import hash_password, create_access_token, verify_password, ACCESS_TOK
 from sqlalchemy import asc
 from typing import List
 from fetch_and_store_private import fetch_and_store_private
-from fetch_and_store_tags import save_tags_to_db
+from fetch_and_store_tags import update_tags_logic
 from similar_games import update_similar_games, get_top_similar_game_ids
 from helpers import apply_game_filters
 from database import engine, Base, SessionLocal
@@ -362,9 +362,9 @@ def fetch_private_collection_quick(db: Session = Depends(get_db), current_user: 
 def fetch_complete_collection(db: Session = Depends(get_db), current_user: User = Depends(require_role("admin"))):
     try:
         result = fetch_and_store_private(bgg_username, bgg_password)
-        save_tags_to_db()
-        update_similar_games()
-        return result  
+        changes = update_tags_logic(only_missing_tags=True)
+        created = update_similar_games(max_similar_games=10)
+        return {"result": result, "changes": changes, "created": created}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -384,8 +384,8 @@ def fetch_tags_endpoint(db: Session = Depends(get_db), current_user: User = Depe
     Endpoint to fetch tags from external sources and save them in the database.
     """
     try:
-        save_tags_to_db()
-        return {"message": "Tags fetched and saved successfully."}
+        changes = update_tags_logic(only_missing_tags=False)
+        return {"message": "Tags fetched and saved successfully.", "changes": changes}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error updating tags: {str(e)}")
 
@@ -396,7 +396,7 @@ def update_similar_games_endpoint(db: Session = Depends(get_db), current_user: U
     Endpoint to find and update similar games based on their tags.
     """
     try:
-        update_similar_games()
-        return {"message": "Similar games updated successfully."}
+        created = update_similar_games(max_similar_games=10)
+        return {"message": "Similar games updated successfully.", "created": created}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error updating similar games: {str(e)}")

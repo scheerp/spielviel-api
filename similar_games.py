@@ -1,104 +1,184 @@
-from typing import List, Tuple
 from models import Game, GameSimilarity
 from sqlalchemy.orm import Session
 from database import SessionLocal
 from random import shuffle
+import logging
+from typing import Dict, List, Tuple
 
 def get_top_similar_game_ids(similar_games: List[GameSimilarity], limit: int = 6) -> List[int]:
     """
-    Liefert die IDs der `limit` ähnlichsten Spiele basierend auf similarity_score.
-    Bei gleicher similarity_score werden Spiele zufällig gemischt.
+    Liefert die IDs der `limit` ähnlichsten Spiele basierend auf similarity_score,
+    aber gibt sie in zufälliger Reihenfolge zurück.
 
     Args:
         similar_games (List[GameSimilarity]): Liste von GameSimilarity-Objekten.
         limit (int): Maximale Anzahl der zurückgegebenen IDs.
 
     Returns:
-        List[int]: Liste der IDs der ähnlichsten Spiele.
+        List[int]: Liste der IDs der ähnlichsten Spiele (randomisiert).
     """
-    # Gruppiere die Spiele nach similarity_score
-    similar_game_groups = {}
-    for sg in similar_games:
-        similar_game_groups.setdefault(sg.similarity_score, []).append(sg.similar_game_id)
+    # 1) Sortiere nach similarity_score DESC
+    sorted_games = sorted(similar_games, key=lambda sg: sg.similarity_score, reverse=True)
 
-    # Sortiere die Gruppen nach similarity_score absteigend
-    top_similar_ids = []
-    for similarity_score in sorted(similar_game_groups.keys(), reverse=True):
-        candidates = similar_game_groups[similarity_score]
-        shuffle(candidates)  # Zufällige Reihenfolge innerhalb der Gruppe
-        top_similar_ids.extend(candidates)
+    # 2) Nimm die Top-Einträge (limit)
+    top_games = sorted_games[:limit]
 
-        if len(top_similar_ids) >= limit:  # Stoppe, wenn das Limit erreicht ist
-            break
+    # 3) Shuffle das Ergebnis, damit die Rückgabe-Reihenfolge zufällig ist
+    shuffle(top_games)
 
-    # Beschränke die Liste auf maximal `limit` IDs
-    return top_similar_ids[:limit]
+    # 4) Extrahiere die IDs und gib sie zurück
+    return [sg.similar_game_id for sg in top_games]
 
-def find_similar_games_for_game(game: Game, session: Session, limit: int = 10) -> List[Tuple[int, float, int, float]]:
+    
+# ------------------------------------------------------------------------------
+# Logger einrichten (alternativ in main.py / __init__.py konfigurierbar)
+# ------------------------------------------------------------------------------
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+# Falls du die Logs direkt auf der Konsole sehen möchtest:
+if not logger.handlers:
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
+    logger.addHandler(console_handler)
+
+# ------------------------------------------------------------------------------
+# Hilfsfunktion: Ähnlichkeitsberechnung (Tags + Complexity)
+# ------------------------------------------------------------------------------
+def calculate_similarity(
+    game_a_data: Dict,
+    game_b_data: Dict
+) -> Tuple[float, int, float]:
     """
-    Findet bis zu `limit` ähnliche Spiele basierend auf geteilten Tags.
-    Gibt eine Liste von Tupeln zurück: (similar_game_id, similarity_score, shared_tags_count, tag_priority_sum).
+    Berechnet einen Similarity-Score zwischen zwei Spielen.
+
+    Args:
+        game_a_data["tags"]: Dict[tag_id -> priority]
+        game_a_data["complexity"]: float
+        game_b_data["tags"]: Dict[tag_id -> priority]
+        game_b_data["complexity"]: float
+
+    Returns:
+        (similarity_score, shared_tags_count, tag_priority_sum)
     """
-    current_tags = {tag.id: tag.priority for tag in game.tags} if game.tags else {}
+    tags_a = game_a_data["tags"]
+    tags_b = game_b_data["tags"]
 
-    if not current_tags:
-        return []
+    # Gemeinsame Tags
+    shared_tags = set(tags_a.keys()) & set(tags_b.keys())
+    shared_tags_count = len(shared_tags)
+    tag_priority_sum = sum(tags_a[tag_id] + tags_b[tag_id] for tag_id in shared_tags)
 
-    games = session.query(Game).filter(Game.id != game.id).all()
-    similarity_scores = []
+    # Complexity in Score einbeziehen
+    # Beispiel: Bonus, wenn Complexity-Differenz klein ist
+    complexity_diff = abs(game_a_data["complexity"] - game_b_data["complexity"])
+    # max Bonus 5.0, frei anpassbar
+    complexity_bonus = max(0.0, 5.0 - complexity_diff)
 
-    for other_game in games:
-        other_tags = {tag.id: tag.priority for tag in other_game.tags} if other_game.tags else {}
+    # Beispiel-Formel
+    similarity_score = shared_tags_count + (tag_priority_sum * 0.1) + complexity_bonus
 
-        # Gemeinsame Tags und Metriken berechnen
-        shared_tags = set(current_tags.keys()) & set(other_tags.keys())
-        shared_tags_count = len(shared_tags)
-        tag_priority_sum = sum(current_tags[tag_id] + other_tags[tag_id] for tag_id in shared_tags)
-        similarity_score = shared_tags_count + (tag_priority_sum * 0.1)  # Gewichtung für die Priorität
+    return similarity_score, shared_tags_count, tag_priority_sum
 
-        if shared_tags_count > 0:
-            similarity_scores.append((other_game.id, similarity_score, shared_tags_count, tag_priority_sum))
-
-    # Sortieren: Ähnlichkeitswert (absteigend), dann ID (aufsteigend)
-    similarity_scores.sort(key=lambda x: (-x[1], x[0]))
-
-    # Begrenzen auf die Top `limit` Ergebnisse
-    return similarity_scores[:limit]
-
-
-def update_similar_games(max_similar_games: int = 10):
+# ------------------------------------------------------------------------------
+# Hauptfunktion: Update Similarities für alle Spiele (immer alles löschen + neu)
+# ------------------------------------------------------------------------------
+def update_similar_games(max_similar_games: int = 10) -> int:
     """
-    Aktualisiert die Ähnlichkeit zwischen allen Spielen und speichert die Ergebnisse in der Tabelle `game_similarities`.
-    Begrenze die Anzahl ähnlicher Spiele pro Spiel auf `max_similar_games`.
+    Aktualisiert Similarities für alle Spiele:
+      1) Löscht alle Einträge in `game_similarities`.
+      2) Lädt alle Spiele + Tags + Complexity in den Speicher (Variante A).
+      3) Berechnet in Python (O(n^2)) alle paarweisen Similarities.
+      4) Speichert pro Spiel nur die Top `max_similar_games` in der DB.
+      5) Nutzt Logging und gibt die Anzahl neu erstellter Similarities zurück.
+
+    WARNUNG: Dieses Vorgehen ist O(n^2). Bei sehr vielen Spielen kann es
+             entsprechend lange dauern und RAM beanspruchen.
     """
     session = SessionLocal()
+    created_count = 0
+
     try:
-        # Bestehende Einträge löschen (falls vorhanden)
+        logger.info("1) Lösche alle Einträge aus 'game_similarities' ...")
         session.query(GameSimilarity).delete()
+        session.commit()
+        logger.info("   -> Alle Einträge gelöscht.")
 
-        games = session.query(Game).all()
+        logger.info("2) Lade alle Spiele aus der Datenbank ...")
+        all_games = session.query(Game).all()
+        logger.info(f"   -> {len(all_games)} Spiele geladen.")
 
-        for game in games:
-            print(f"Updating similar games for {game.name}")
+        # Dict: game_id -> {"tags": {tag_id: priority}, "complexity": float}
+        game_data = {}
+        for g in all_games:
+            tags_dict = {t.id: t.priority for t in g.tags} if g.tags else {}
+            game_data[g.id] = {
+                "tags": tags_dict,
+                "complexity": g.complexity or 0.0,  # Falls None -> 0.0
+            }
 
-            # Finde ähnliche Spiele (begrenzt auf `max_similar_games`)
-            similar_games_with_scores = find_similar_games_for_game(game, session, limit=max_similar_games)
+        # Sammelstruktur für Similarities:
+        # similarities_map[game_id] = [(other_id, score, shared_tags_count, tag_priority_sum), ...]
+        similarities_map = {g.id: [] for g in all_games}
 
-            # Speichere Ähnlichkeiten in der Datenbank
-            for similar_game_id, score, shared_tags_count, tag_priority_sum in similar_games_with_scores:
-                similarity_entry = GameSimilarity(
-                    game_id=game.id,
-                    similar_game_id=similar_game_id,
-                    similarity_score=score,
-                    shared_tags_count=shared_tags_count,
-                    tag_priority_sum=tag_priority_sum,
+        logger.info("3) Berechne Similarities in Python (O(n^2)) ...")
+        game_ids = list(game_data.keys())
+
+        for i in range(len(game_ids)):
+            game_id = game_ids[i]
+            for j in range(i + 1, len(game_ids)):
+                other_game_id = game_ids[j]
+
+                # Ähnlichkeit berechnen
+                score, shared_tags_count, tag_priority_sum = calculate_similarity(
+                    game_data[game_id],
+                    game_data[other_game_id]
                 )
-                session.add(similarity_entry)
+
+                # Optional: Speichere nur, wenn überhaupt gemeinsame Tags
+                # oder du kannst das weglassen, wenn du alles speichern möchtest
+                if shared_tags_count == 0:
+                    continue
+
+                # Für beide Richtungen eintragen (game_id -> other_game_id & andersrum)
+                similarities_map[game_id].append(
+                    (other_game_id, score, shared_tags_count, tag_priority_sum)
+                )
+                similarities_map[other_game_id].append(
+                    (game_id, score, shared_tags_count, tag_priority_sum)
+                )
+
+        logger.info("4) Sortiere und speichere die Top Similarities pro Spiel ...")
+        for g_id, sim_list in similarities_map.items():
+            if not sim_list:
+                continue
+
+            # Sortieren nach Score absteigend
+            sim_list.sort(key=lambda x: x[1], reverse=True)
+
+            # Top-Einträge (max_similar_games)
+            top_entries = sim_list[:max_similar_games]
+
+            # Neue Datensätze in DB anlegen
+            for (other_id, score, shared_count, tag_sum) in top_entries:
+                new_sim = GameSimilarity(
+                    game_id=g_id,
+                    similar_game_id=other_id,
+                    similarity_score=score,
+                    shared_tags_count=shared_count,
+                    tag_priority_sum=tag_sum
+                )
+                session.add(new_sim)
+                created_count += 1
 
         session.commit()
-        print(f"Similar games updated for all games (limited to {max_similar_games} per game).")
+        logger.info("   -> Fertig! Ähnlichkeiten erfolgreich aktualisiert.")
+        logger.info(f"5) Anzahl neu erstellter Similarities: {created_count}")
+
     except Exception as e:
-        print(f"Error updating similar games: {e}")
+        logger.error(f"Fehler beim Aktualisieren der Similar Games: {e}")
         session.rollback()
     finally:
         session.close()
+
+    return created_count

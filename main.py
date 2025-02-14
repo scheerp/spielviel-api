@@ -211,7 +211,7 @@ def read_games_by_ids(game_ids: List[int], db: Session = Depends(get_db)):
     return games
 
 @app.get("/game_by_ean/{ean}", response_model=GameResponse)
-def read_game_by_ean(ean: int, db: Session = Depends(get_db)):
+def read_game_by_ean(ean: str, db: Session = Depends(get_db)):
     game = db.query(Game).options(joinedload(Game.tags)).filter(Game.ean == ean).first()
     if not game:
         create_error(status_code=404, error_code="GAME_NOT_FOUND", details={"ean": ean})
@@ -314,7 +314,7 @@ def add_ean(game_id: int, request: AddEANRequest, db: Session = Depends(get_db),
 
 
 @app.put("/borrow_game_ean/{game_ean}")
-def borrow_game_ean(game_ean: int, db: Session = Depends(get_db), current_user: User = Depends(require_role("helper"))):
+def borrow_game_ean(game_ean: str, db: Session = Depends(get_db), current_user: User = Depends(require_role("helper"))):
     game = db.query(Game).filter(Game.ean == game_ean).first()
     if game is None:
         create_error(status_code=404, error_code="GAME_NOT_FOUND", details={"ean": game_ean})
@@ -329,7 +329,7 @@ def borrow_game_ean(game_ean: int, db: Session = Depends(get_db), current_user: 
 
 
 @app.put("/return_game_ean/{game_ean}")
-def return_game_ean(game_ean: int, db: Session = Depends(get_db), current_user: User = Depends(require_role("helper"))):
+def return_game_ean(game_ean: str, db: Session = Depends(get_db), current_user: User = Depends(require_role("helper"))):
     game = db.query(Game).filter(Game.ean == game_ean).first()
     if game is None:
         create_error(status_code=404, error_code="GAME_NOT_FOUND", details={"ean": game_ean})

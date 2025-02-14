@@ -12,7 +12,7 @@ game_tags = Table(
 )
 
 class AddEANRequest(BaseModel):
-    ean: int
+    ean: str
 
 class TagResponse(BaseModel):
     id: int
@@ -47,7 +47,7 @@ class GameResponseWithDetails(BaseModel):
     max_playtime: Optional[int]
     playing_time: Optional[int]
     rating: Optional[float]
-    ean: Optional[int]
+    ean: Optional[str]
     available: int
     borrow_count: int
     quantity: int
@@ -74,7 +74,7 @@ class GameResponse(BaseModel):
     max_players: Optional[int]
     min_playtime: Optional[int]
     max_playtime: Optional[int]
-    ean: Optional[int]
+    ean: Optional[str]
     available: int
     borrow_count: int
     quantity: int
@@ -135,7 +135,7 @@ class Game(Base):
     max_playtime = Column(Integer, nullable=True)
     playing_time = Column(Integer, nullable=True)
     rating = Column(Float, nullable=True)
-    ean = Column(Integer, unique=True, nullable=True)
+    ean = Column(String, unique=True, nullable=True)
     available = Column(Integer, default=1)
     borrow_count = Column(Integer, default=0)
     quantity = Column(Integer, default=1)

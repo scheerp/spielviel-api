@@ -13,7 +13,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
-from helpers import assign_complexity_label
+from utils.filters import assign_complexity_label
 import chromedriver_autoinstaller
 import os
 import json

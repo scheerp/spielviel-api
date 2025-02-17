@@ -1,19 +1,43 @@
 from datetime import datetime, timedelta
+from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from models import User
 from dotenv import load_dotenv
+from utils.errors import create_error
+from database import get_db
 import os
 
 load_dotenv()
 
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token")
+
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 5760
+ROLE_PERMISSIONS = {
+    "admin": ["helper", "guest", "admin"],  # Admins dürfen alles
+    "helper": ["helper", "guest"],  # Helpers haben begrenzte Rechte
+    "guest": ["guest"],  # Gäste haben noch weniger Rechte
+}
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+def require_role(required_role: str):
+    """Factory-Funktion zur Generierung von Rollen-basierten Dependencies"""
+    def role_checker(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+        user = get_current_user(token, db)
+        if user.role not in ROLE_PERMISSIONS:
+            create_error(status_code=403, error_code="NOT_AUTHORIZED")
+
+        if required_role not in ROLE_PERMISSIONS[user.role]:
+            create_error(status_code=403, error_code="PERMISSION_DENIED")
+
+        return user  # ✅ Berechtigter User wird zurückgegeben
+
+    return role_checker
 
 
 def hash_password(password: str) -> str:

@@ -19,3 +19,11 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # Basis-Klasse für Modelle
 Base = declarative_base()
+
+# Abhängigkeit zur Datenbank-Sitzung
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()

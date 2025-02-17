@@ -6,7 +6,7 @@ from typing import List, Dict
 from sqlalchemy.orm import Session
 from database import SessionLocal
 from models import Game
-from helpers import assign_complexity_label
+from utils.filters import assign_complexity_label
 # Wir möchten parse_collection wiederverwenden
 from fetch_and_store_private import parse_collection
 

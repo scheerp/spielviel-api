@@ -1,8 +1,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from database import engine, Base
 from routes.auth import router as auth_router
 from routes.games import router as games_router
 from routes.admin import router as admin_router
+
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
 

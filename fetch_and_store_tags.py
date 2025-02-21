@@ -26,7 +26,7 @@ def get_all_tags(session: Session) -> Dict[str, Tag]:
     tags = session.query(Tag).filter(Tag.is_active == True).all()
     return {tag.normalized_tag.lower(): tag for tag in tags}
 
-def fetch_tags_with_retry(bgg_id: int, retries: int = 3, delay: float = 2.0) -> List[str]:
+def fetch_tags_with_retry(bgg_id: int, retries: int = 3, delay: float = 0.5) -> List[str]:
     """Holt Tags von BoardGameGeek mit Retry-Mechanismus."""
     url = f"https://boardgamegeek.com/api/tags?objectid={bgg_id}&objecttype=thing"
     

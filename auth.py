@@ -5,12 +5,9 @@ from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from models import User
-from dotenv import load_dotenv
 from utils.errors import create_error
 from database import get_db
 import os
-
-load_dotenv()
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token")
 
@@ -18,9 +15,9 @@ SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 5760
 ROLE_PERMISSIONS = {
-    "admin": ["helper", "guest", "admin"],  # Admins dürfen alles
-    "helper": ["helper", "guest"],  # Helpers haben begrenzte Rechte
-    "guest": ["guest"],  # Gäste haben noch weniger Rechte
+    "admin": ["helper", "guest", "admin"],
+    "helper": ["helper", "guest"],
+    "guest": ["guest"],
 }
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")

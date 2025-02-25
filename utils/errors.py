@@ -9,10 +9,10 @@ ERROR_CODES = {
     "PERMISSION_DENIED": {"message": "Keine Berechtigung."},
     "NO_COPIES_AVAILABLE": {"message": "Es sind keine verfügbaren Kopien vorhanden."},
     "ALL_COPIES_AVAILABLE": {"message": "Alle verfügbaren Kopien bereits zurückgegeben."},
-    "USER_ALREADY_EXISTS": {"message": "Der Benutzername ist bereits vergeben."},
+    "USER_ALREADY_EXISTS": {"message": "Benutzername oder E-Mail bereits vergeben."},
     "INTERNAL_ERROR": {"message": "Das hat leider nicht funktioniert."},
     "IMPORT_IN_PROGRESS": {"message": "Ein Importvorgang läuft bereits. Bitte warte, bis dieser abgeschlossen ist."},
-
+    "INVALID_INVITE_CODE": {"message": "Ungültiger Einladungscode."},
 }
 
 # Helper-Funktion für Fehler

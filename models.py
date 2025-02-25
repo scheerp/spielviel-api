@@ -1,4 +1,4 @@
-from sqlalchemy import Table, Column, Integer, String, Boolean, Float, ForeignKey
+from sqlalchemy import Table, Column, Integer, String, Boolean, Float, ForeignKey, DateTime
 from database import Base
 from sqlalchemy.orm import relationship
 from pydantic import BaseModel
@@ -10,6 +10,13 @@ game_tags = Table(
     Column("game_id", Integer, ForeignKey("games.id"), primary_key=True),
     Column("tag_id", Integer, ForeignKey("tags.id"), primary_key=True),
 )
+
+
+class RegisterRequest(BaseModel):
+    username: str
+    email: str
+    password: str
+    invite_code: str
 
 class AddEANRequest(BaseModel):
     ean: str
@@ -154,11 +161,15 @@ class Game(Base):
 
 class User(Base):
     __tablename__ = 'users'
+
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     username = Column(String, unique=True, index=True, nullable=False)
+    email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
     is_active = Column(Boolean, default=True)
     role = Column(String, default="helper")
+    reset_token = Column(String, nullable=True)
+    reset_token_expires = Column(DateTime, nullable=True)
 
 
 class Tag(Base):

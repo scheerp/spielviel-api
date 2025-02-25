@@ -4,29 +4,6 @@ The SpielViel API is a FastAPI application that manages board game data, retriev
 
 ---
 
-## **Project Structure**
-
-```
-spielviel-api/
-├── __pycache__/          # Python cache files
-├── alembic/              # Database migrations
-├── env/                  # Environment files (e.g., virtual environment)
-├── auth.py               # Authentication logic
-├── automatic_importer.py # Automatic data imports
-├── build.sh              # Optional build script
-├── database.py           # Database configuration with SQLAlchemy
-├── db.sqlite3            # SQLite database
-├── Dockerfile            # Docker configuration file
-├── fetch_and_store.py    # Fetch logic from BoardGameGeek
-├── fetch_and_store_private.py # Fetch logic for private data
-├── main.py               # Main API application
-├── models.py             # Database models
-├── requirements.txt      # Python dependencies
-├── scrape_german_name_playwright.py # Additional import logic
-```
-
----
-
 ## **Prerequisites**
 
 - Docker (https://www.docker.com/get-started)

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy import asc
 from database import get_db
 from models import Game, GameResponse, GamesWithCountResponse, GameResponseWithDetails, User, AddEANRequest
@@ -103,30 +103,38 @@ def borrow_game(
     db: Session = Depends(get_db), 
     current_user: User = Depends(require_role("helper"))
 ):
-    # Spiel abrufen
-    game = db.query(Game).options(joinedload(Game.similar_games)).filter(Game.id == game_id).first()
+    # 1. Datensatz mit Row-Level-Lock laden – ohne joinedload!
+    game = (
+        db.query(Game)
+        .filter(Game.id == game_id)
+        .with_for_update()
+        .first()
+    )
     if game is None:
         create_error(status_code=404, error_code="GAME_NOT_FOUND", details={"game_id": game_id})
-
-    # Verfügbarkeit prüfen und aktualisieren
-    if game.available > 0:
-        game.available -= 1
-        game.borrow_count += 1
-    else:
+    
+    if game.available <= 0:
         create_error(status_code=400, error_code="NO_COPIES_AVAILABLE")
-
+    
+    game.available -= 1
+    game.borrow_count += 1
     db.commit()
     db.refresh(game)
-
-    # Ähnliche Spiele berechnen
-    # top_similar_ids = get_top_similar_game_ids(game.similar_games)
-
-    # Rückgabe des aktualisierten Spiels mit ähnlichen Spielen
+    
+    # 2. Nachladen der Beziehungen via selectinload (separate Abfrage)
+    game = (
+        db.query(Game)
+        .options(selectinload(Game.similar_games), selectinload(Game.tags))
+        .filter(Game.id == game_id)
+        .first()
+    )
+    
     return {
         **game.__dict__,
         "tags": game.tags,
-        # "similar_games": top_similar_ids  # IDs der 5 ähnlichsten Spiele
+        "similar_games": [sg.similar_game_id for sg in game.similar_games] if game.similar_games else []
     }
+
 
 @router.put("/game/return/{game_id}")
 def return_game(
@@ -134,31 +142,37 @@ def return_game(
     db: Session = Depends(get_db), 
     current_user: User = Depends(require_role("helper"))
 ):
-    # Spiel abrufen
-    game = db.query(Game).options(joinedload(Game.similar_games)).filter(Game.id == game_id).first()
+    # Row-Level-Lock setzen ohne joinedload
+    game = (
+        db.query(Game)
+        .filter(Game.id == game_id)
+        .with_for_update()
+        .first()
+    )
     if game is None:
         create_error(status_code=404, error_code="GAME_NOT_FOUND", details={"game_id": game_id})
-
-    # Verfügbarkeit prüfen und aktualisieren
-    if game.available < game.quantity:
-        game.available += 1
-    else:
+    
+    if game.available >= game.quantity:
         create_error(status_code=400, error_code="ALL_COPIES_AVAILABLE")
-        game.available = game.quantity
-
+    
+    game.available += 1
     db.commit()
     db.refresh(game)
     
-
-    # Ähnliche Spiele berechnen
-    # top_similar_ids = get_top_similar_game_ids(game.similar_games)
-
-    # Rückgabe des aktualisierten Spiels mit ähnlichen Spielen
+    # Beziehungen separat nachladen
+    game = (
+        db.query(Game)
+        .options(selectinload(Game.similar_games), selectinload(Game.tags))
+        .filter(Game.id == game_id)
+        .first()
+    )
+    
     return {
         **game.__dict__,
         "tags": game.tags,
-        # "similar_games": top_similar_ids  # IDs der 5 ähnlichsten Spiele
+        "similar_games": [sg.similar_game_id for sg in game.similar_games] if game.similar_games else []
     }
+
 
 @router.put("/game/add_ean/{game_id}")
 def add_ean(game_id: int, request: AddEANRequest, db: Session = Depends(get_db), current_user: User = Depends(require_role("helper"))):
@@ -197,29 +211,77 @@ def remove_ean(game_id: int, db: Session = Depends(get_db), current_user: User =
     return game
 
 @router.put("/game/borrow_by_ean/{game_ean}")
-def borrow_game_ean(game_ean: str, db: Session = Depends(get_db), current_user: User = Depends(require_role("helper"))):
-    game = db.query(Game).filter(Game.ean == game_ean).first()
+def borrow_game_ean(
+    game_ean: str, 
+    db: Session = Depends(get_db), 
+    current_user: User = Depends(require_role("helper"))
+):
+    # Row-Level-Lock setzen via EAN (ohne joinedload)
+    game = (
+        db.query(Game)
+        .filter(Game.ean == game_ean)
+        .with_for_update()
+        .first()
+    )
     if game is None:
         create_error(status_code=404, error_code="GAME_NOT_FOUND", details={"ean": game_ean})
-    if game.available > 0:
-        game.available -= 1
-        game.borrow_count += 1
-    else:
+    
+    if game.available <= 0:
         create_error(status_code=400, error_code="NO_COPIES_AVAILABLE")
+    
+    game.available -= 1
+    game.borrow_count += 1
     db.commit()
     db.refresh(game)
-    return game
+    
+    # Beziehungen separat nachladen
+    game = (
+        db.query(Game)
+        .options(selectinload(Game.similar_games), selectinload(Game.tags))
+        .filter(Game.ean == game_ean)
+        .first()
+    )
+    
+    return {
+        **game.__dict__,
+        "tags": game.tags,
+        "similar_games": [sg.similar_game_id for sg in game.similar_games] if game.similar_games else []
+    }
 
 
 @router.put("/game/return_by_ean/{game_ean}")
-def return_game_ean(game_ean: str, db: Session = Depends(get_db), current_user: User = Depends(require_role("helper"))):
-    game = db.query(Game).filter(Game.ean == game_ean).first()
+def return_game_ean(
+    game_ean: str, 
+    db: Session = Depends(get_db), 
+    current_user: User = Depends(require_role("helper"))
+):
+    # Row-Level-Lock setzen via EAN (ohne joinedload)
+    game = (
+        db.query(Game)
+        .filter(Game.ean == game_ean)
+        .with_for_update()
+        .first()
+    )
     if game is None:
         create_error(status_code=404, error_code="GAME_NOT_FOUND", details={"ean": game_ean})
-    if game.available < game.quantity:
-        game.available += 1
-    else:
-        game.available = game.quantity
+    
+    if game.available >= game.quantity:
+        create_error(status_code=400, error_code="ALL_COPIES_AVAILABLE")
+    
+    game.available += 1
     db.commit()
     db.refresh(game)
-    return game
+    
+    # Beziehungen separat nachladen
+    game = (
+        db.query(Game)
+        .options(selectinload(Game.similar_games), selectinload(Game.tags))
+        .filter(Game.ean == game_ean)
+        .first()
+    )
+    
+    return {
+        **game.__dict__,
+        "tags": game.tags,
+        "similar_games": [sg.similar_game_id for sg in game.similar_games] if game.similar_games else []
+    }

@@ -15,7 +15,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 required_invite = os.getenv("HELPER_INVITE_CODE")
 EMAIL_REGEX = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
-PASSWORD_REGEX = r"^(?=.*[A-Z])(?=.*\d)[A-Za-z\d]{6,}$"
+PASSWORD_REGEX = r"^(?=.*[A-Z])(?=.*\d)[A-Za-z\d!@#$%^&*()_+={}\[\]:;'\"<>,.?/\\|-]{6,}$"
 
 
 @router.post("/token")

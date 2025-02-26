@@ -35,7 +35,7 @@ def fetch_private_collection_quick(
         result = fetch_and_store_quick(bgg_username, fastMode=True)
         return result  
     except Exception as e:
-        create_error(status_code=500, error_code="INTERNAL_ERROR", details=str(e))
+        create_error(status_code=500, error_code="INTERNAL_ERROR", detailed_message=str(e))
     finally:
         import_lock.release()
 
@@ -56,7 +56,7 @@ def fetch_complete_collection(
         similarities = update_similar_games(max_similar_games=10)
         return {"result": result, "changes": changes, "similarities": similarities}
     except Exception as e:
-        create_error(status_code=500, error_code="INTERNAL_ERROR", details=str(e))
+        create_error(status_code=500, error_code="INTERNAL_ERROR", detailed_message=str(e))
     finally:
         import_lock.release()
 
@@ -75,7 +75,7 @@ def fetch_private_collection(
         result = fetch_and_store_private(bgg_username, bgg_password)
         return result  
     except Exception as e:
-        create_error(status_code=500, error_code="INTERNAL_ERROR", details=str(e))
+        create_error(status_code=500, error_code="INTERNAL_ERROR", detailed_message=str(e))
     finally:
         import_lock.release()
 
@@ -97,7 +97,7 @@ def fetch_tags_endpoint(
         changes = update_tags_logic(only_missing_tags=False)
         return {"message": "Tags fetched and saved successfully.", "changes": changes}
     except Exception as e:
-        create_error(status_code=500, error_code="INTERNAL_ERROR", details=str(e))
+        create_error(status_code=500, error_code="INTERNAL_ERROR", detailed_message=str(e))
     finally:
         import_lock.release()
 
@@ -119,7 +119,7 @@ def update_similar_games_endpoint(
         similarities = update_similar_games(max_similar_games=10)
         return {"message": "Similar games updated successfully.", "similarities": similarities}
     except Exception as e:
-        create_error(status_code=500, error_code="INTERNAL_ERROR", details=str(e))
+        create_error(status_code=500, error_code="INTERNAL_ERROR", detailed_message=str(e))
     finally:
         import_lock.release()
 

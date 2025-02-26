@@ -13,16 +13,19 @@ ERROR_CODES = {
     "INTERNAL_ERROR": {"message": "Das hat leider nicht funktioniert."},
     "IMPORT_IN_PROGRESS": {"message": "Ein Importvorgang läuft bereits. Bitte warte, bis dieser abgeschlossen ist."},
     "INVALID_INVITE_CODE": {"message": "Ungültiger Einladungscode."},
+    "INVALID_EMAIL": {"message": "Ungültige E-Mail Adresse."},
+    "INVALID_PASSWORD": {"message": "Ungültiges Passwort."},
 }
 
 # Helper-Funktion für Fehler
-def create_error(status_code: int, error_code: str, details: dict = None):
+def create_error(status_code: int, error_code: str, detailed_message: str = None , ean_details: dict = None):
     error = ERROR_CODES.get(error_code, {"message": "Unbekannter Fehler"})
     raise HTTPException(
         status_code=status_code,
         detail={
             "error_code": error_code,
             "message": error["message"],
-            "details": details or {}
+            "detailed_message": detailed_message,
+            "ean_details": ean_details or {}
         }
     )

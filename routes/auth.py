@@ -1,4 +1,5 @@
 import os
+import re
 from fastapi import APIRouter, Depends, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy import or_
@@ -9,17 +10,18 @@ from models import User, RegisterRequest
 from datetime import timedelta
 from utils.errors import create_error
 
-required_invite = os.getenv("HELPER_INVITE_CODE")
-
 router = APIRouter()
-
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+required_invite = os.getenv("HELPER_INVITE_CODE")
+EMAIL_REGEX = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
+PASSWORD_REGEX = r"^(?=.*[A-Z])(?=.*\d)[A-Za-z\d]{6,}$"
 
 
 @router.post("/token")
 def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     # Prüfen, ob es eine E-Mail ist (nach @ suchen)
-    is_email = "@" in form_data.username
+    is_email = re.match(EMAIL_REGEX, form_data.username)
 
     # User entweder über Username oder E-Mail finden
     user = db.query(User).filter(
@@ -51,6 +53,14 @@ def register_user(request: RegisterRequest, db: Session = Depends(get_db)):
     if request.invite_code != required_invite:
         create_error(status_code=status.HTTP_403_FORBIDDEN, error_code="INVALID_INVITE_CODE")
 
+    # E-Mail-Validierung
+    if not re.match(EMAIL_REGEX, request.email):
+        create_error(status_code=status.HTTP_400_BAD_REQUEST, error_code="INVALID_EMAIL")
+
+    # Passwort-Validierung
+    if not re.match(PASSWORD_REGEX, request.password):
+        create_error(status_code=status.HTTP_400_BAD_REQUEST, error_code="INVALID_PASSWORD", detailed_message="Passwort muss mindestens 6 Zeichen lang sein, eine Zahl und einen Großbuchstaben enthalten.")
+
     # Prüfen, ob Nutzername oder E-Mail bereits existieren
     existing_user = db.query(User).filter(User.username == request.username).first()
     existing_email = db.query(User).filter(User.email == request.email).first()
@@ -63,5 +73,5 @@ def register_user(request: RegisterRequest, db: Session = Depends(get_db)):
     db.add(user)
     db.commit()
     db.refresh(user)
-    
-    return {"message": "User created successfully", "username": user.username}
+
+    return {"message": "User erfolgreich erstellt", "username": user.username}

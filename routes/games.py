@@ -85,7 +85,7 @@ def read_borrowed_games(
 def read_games_by_ids(game_ids: List[int], db: Session = Depends(get_db)):
     games = db.query(Game).options(joinedload(Game.tags)).filter(Game.id.in_(game_ids)).all()
     if not games:
-        create_error(status_code=404, error_code="NO_GAMES_AVAILABLE", details={"game_ids": game_ids})
+        create_error(status_code=404, error_code="NO_GAMES_AVAILABLE")
     return games
 
 
@@ -93,7 +93,7 @@ def read_games_by_ids(game_ids: List[int], db: Session = Depends(get_db)):
 def read_game_by_ean(ean: str, db: Session = Depends(get_db)):
     game = db.query(Game).options(joinedload(Game.tags)).filter(Game.ean == ean).first()
     if not game:
-        create_error(status_code=404, error_code="GAME_NOT_FOUND", details={"ean": ean})
+        create_error(status_code=404, error_code="GAME_NOT_FOUND")
     return game
 
 
@@ -111,7 +111,7 @@ def borrow_game(
         .first()
     )
     if game is None:
-        create_error(status_code=404, error_code="GAME_NOT_FOUND", details={"game_id": game_id})
+        create_error(status_code=404, error_code="GAME_NOT_FOUND")
     
     if game.available <= 0:
         create_error(status_code=400, error_code="NO_COPIES_AVAILABLE")
@@ -150,7 +150,7 @@ def return_game(
         .first()
     )
     if game is None:
-        create_error(status_code=404, error_code="GAME_NOT_FOUND", details={"game_id": game_id})
+        create_error(status_code=404, error_code="GAME_NOT_FOUND")
     
     if game.available >= game.quantity:
         create_error(status_code=400, error_code="ALL_COPIES_AVAILABLE")
@@ -178,14 +178,14 @@ def return_game(
 def add_ean(game_id: int, request: AddEANRequest, db: Session = Depends(get_db), current_user: User = Depends(require_role("helper"))):
     game = db.query(Game).filter(Game.id == game_id).first()
     if game is None:
-        create_error(status_code=404, error_code="GAME_NOT_FOUND", details={"game_id": game_id})
+        create_error(status_code=404, error_code="GAME_NOT_FOUND")
 
     existing_game = db.query(Game).filter(Game.ean == request.ean).first()
     if existing_game:
         create_error(
             status_code=409,
             error_code="BARCODE_CONFLICT",
-            details={
+            ean_details={
                 "id": existing_game.id,
                 "name": existing_game.name,
                 "ean": existing_game.ean,
@@ -202,7 +202,7 @@ def add_ean(game_id: int, request: AddEANRequest, db: Session = Depends(get_db),
 def remove_ean(game_id: int, db: Session = Depends(get_db), current_user: User = Depends(require_role("admin"))):
     game = db.query(Game).filter(Game.id == game_id).first()
     if game is None:
-        create_error(status_code=404, error_code="GAME_NOT_FOUND", details={"game_id": game_id})
+        create_error(status_code=404, error_code="GAME_NOT_FOUND")
 
     game.ean = None
     db.commit()
@@ -224,7 +224,7 @@ def borrow_game_ean(
         .first()
     )
     if game is None:
-        create_error(status_code=404, error_code="GAME_NOT_FOUND", details={"ean": game_ean})
+        create_error(status_code=404, error_code="GAME_NOT_FOUND")
     
     if game.available <= 0:
         create_error(status_code=400, error_code="NO_COPIES_AVAILABLE")
@@ -263,7 +263,7 @@ def return_game_ean(
         .first()
     )
     if game is None:
-        create_error(status_code=404, error_code="GAME_NOT_FOUND", details={"ean": game_ean})
+        create_error(status_code=404, error_code="GAME_NOT_FOUND")
     
     if game.available >= game.quantity:
         create_error(status_code=400, error_code="ALL_COPIES_AVAILABLE")

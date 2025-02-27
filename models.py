@@ -110,9 +110,9 @@ class GameResponseWithDetails(BaseModel):
     complexity_label: Optional[str]
     best_playercount: Optional[int]
     min_recommended_playercount: Optional[int]
-    max_recommended_playercount: Optional[int]
-    explainers: Optional[List[ExplainerGroup]] = None
-    my_familiarity: Optional[int] = None
+    max_recommended_playercount: Optional[int]    
+    explainers: List[ExplainerGroup] = []
+    my_familiarity: Optional[int] = 0
 
     class Config:
         from_attributes = True

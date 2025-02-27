@@ -106,6 +106,7 @@ class GameResponseWithDetails(BaseModel):
     min_recommended_playercount: Optional[int]
     max_recommended_playercount: Optional[int]
     explainers: Dict[int, List[ExplainersBasic]] = {} 
+    my_familiarity: Optional[int] = None
 
     class Config:
         from_attributes = True

@@ -4,12 +4,11 @@ from sqlalchemy import asc
 from database import get_db
 from models import Game, GameResponse, GamesWithCountResponse, GameResponseWithDetails, User, UserGameKnowledge, AddEANRequest, ExplainerResponse
 from utils.filters import apply_game_filters
-from typing import List
+from typing import List, Optional
 from similar_games import get_top_similar_game_ids
 from utils.errors import create_error
 from auth import require_role
 from collections import defaultdict
-
 
 router = APIRouter()
 
@@ -54,7 +53,11 @@ def get_games_count(
 
 
 @router.get("/game/{game_id}", response_model=GameResponseWithDetails)
-def read_game(game_id: int, db: Session = Depends(get_db)):
+def read_game(
+    game_id: int,
+    user_id: Optional[int] = Query(None, alias="user_id"),
+    db: Session = Depends(get_db)
+):
     game = (
         db.query(Game)
         .options(
@@ -81,12 +84,25 @@ def read_game(game_id: int, db: Session = Depends(get_db)):
 
     explainers_by_familiarity = dict(sorted(explainers_by_familiarity.items(), reverse=True))
 
-    return {
+    my_familiarity = None
+    if user_id is not None:
+        for uk in game.user_knowledge:
+            if uk.user.id == user_id:
+                my_familiarity = uk.familiarity
+                break
+
+    response_data = {
         **game.__dict__,
         "tags": game.tags,
         "similar_games": top_similar_ids,
-        "explainers": explainers_by_familiarity
+        "my_familiarity": my_familiarity
     }
+
+    if user_id is not None:
+        response_data["explainers"] = explainers_by_familiarity
+
+    return response_data
+
 
 
 @router.get("/borrowed-games", response_model=GamesWithCountResponse)

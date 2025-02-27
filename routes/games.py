@@ -2,12 +2,14 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy import asc
 from database import get_db
-from models import Game, GameResponse, GamesWithCountResponse, GameResponseWithDetails, User, AddEANRequest
+from models import Game, GameResponse, GamesWithCountResponse, GameResponseWithDetails, User, UserGameKnowledge, AddEANRequest, ExplainerResponse
 from utils.filters import apply_game_filters
 from typing import List
 from similar_games import get_top_similar_game_ids
 from utils.errors import create_error
 from auth import require_role
+from collections import defaultdict
+
 
 router = APIRouter()
 
@@ -55,7 +57,11 @@ def get_games_count(
 def read_game(game_id: int, db: Session = Depends(get_db)):
     game = (
         db.query(Game)
-        .options(joinedload(Game.tags), joinedload(Game.similar_games))
+        .options(
+            joinedload(Game.tags),
+            joinedload(Game.similar_games),
+            joinedload(Game.user_knowledge).joinedload(UserGameKnowledge.user)
+        )
         .filter(Game.id == game_id)
         .first()
     )
@@ -64,11 +70,24 @@ def read_game(game_id: int, db: Session = Depends(get_db)):
 
     top_similar_ids = get_top_similar_game_ids(game.similar_games)
 
+    explainers_by_familiarity = defaultdict(list)
+    for uk in game.user_knowledge:
+        if uk.familiarity > 0:
+            explainers_by_familiarity[uk.familiarity].append({
+                "id": uk.user.id,
+                "username": uk.user.username,
+                "familiarity": uk.familiarity
+            })
+
+    explainers_by_familiarity = dict(sorted(explainers_by_familiarity.items(), reverse=True))
+
     return {
         **game.__dict__,
         "tags": game.tags,
-        "similar_games": top_similar_ids
+        "similar_games": top_similar_ids,
+        "explainers": explainers_by_familiarity
     }
+
 
 @router.get("/borrowed-games", response_model=GamesWithCountResponse)
 def read_borrowed_games(

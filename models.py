@@ -1,8 +1,8 @@
 from sqlalchemy import Table, Column, Integer, String, Boolean, Float, ForeignKey, DateTime
 from database import Base
 from sqlalchemy.orm import relationship
-from pydantic import BaseModel
-from typing import List, Optional
+from pydantic import BaseModel, ConfigDict
+from typing import List, Optional, Dict
 
 game_tags = Table(
     "game_tags",
@@ -11,6 +11,42 @@ game_tags = Table(
     Column("tag_id", Integer, ForeignKey("tags.id"), primary_key=True),
 )
 
+class ExplainerResponse(BaseModel):
+    id: int
+    username: str
+    familiarity: int
+
+    class Config:
+        from_attributes = True
+
+class UserGameKnowledge(Base):
+    __tablename__ = "user_game_knowledge"
+
+    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
+    game_id = Column(Integer, ForeignKey("games.id"), primary_key=True)
+    familiarity = Column(Integer, nullable=False)  # z.B. 0 = unbekannt, 5 = expertenwissen
+
+    user = relationship("User", back_populates="game_knowledge")
+    game = relationship("Game", back_populates="user_knowledge")
+
+    
+class ExplainersBasic(BaseModel):
+    id: int
+    username: str
+    familiarity: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+class UserGameKnowledgeRequest(BaseModel):
+    game_id: int
+    familiarity: int
+
+class UserGameKnowledgeResponse(BaseModel):
+    user_id: int
+    game_id: int
+    familiarity: int
+
+    model_config = ConfigDict(from_attributes=True)
 
 class RegisterRequest(BaseModel):
     username: str
@@ -69,6 +105,7 @@ class GameResponseWithDetails(BaseModel):
     best_playercount: Optional[int]
     min_recommended_playercount: Optional[int]
     max_recommended_playercount: Optional[int]
+    explainers: Dict[int, List[ExplainersBasic]] = {} 
 
     class Config:
         from_attributes = True
@@ -128,13 +165,6 @@ class Game(Base):
     name = Column(String, nullable=False, index=True)
     description = Column(String, nullable=True)
     german_description = Column(String, nullable=True)
-    tags = relationship("Tag", secondary=game_tags, back_populates="games", cascade="all, delete")
-    similar_games = relationship(
-        "GameSimilarity",
-        primaryjoin="Game.id == GameSimilarity.game_id",
-        overlaps="game,similarities_from",
-        cascade="all, delete-orphan"
-    )
     year_published = Column(Integer, nullable=True)
     min_players = Column(Integer, nullable=True)
     max_players = Column(Integer, nullable=True)
@@ -158,6 +188,14 @@ class Game(Base):
     min_recommended_playercount = Column(Integer, nullable=True)
     max_recommended_playercount = Column(Integer, nullable=True)
 
+    user_knowledge = relationship("UserGameKnowledge", back_populates="game")
+    tags = relationship("Tag", secondary=game_tags, back_populates="games", cascade="all, delete")
+    similar_games = relationship(
+        "GameSimilarity",
+        primaryjoin="Game.id == GameSimilarity.game_id",
+        overlaps="game,similarities_from",
+        cascade="all, delete-orphan"
+    )
 
 class User(Base):
     __tablename__ = 'users'
@@ -170,6 +208,8 @@ class User(Base):
     role = Column(String, default="helper")
     reset_token = Column(String, nullable=True)
     reset_token_expires = Column(DateTime, nullable=True)
+
+    game_knowledge = relationship("UserGameKnowledge", back_populates="user")
 
 
 class Tag(Base):

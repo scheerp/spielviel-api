@@ -2,7 +2,7 @@ from sqlalchemy import Table, Column, Integer, String, Boolean, Float, ForeignKe
 from database import Base
 from sqlalchemy.orm import relationship
 from pydantic import BaseModel, ConfigDict
-from typing import List, Optional, Dict
+from typing import List, Optional
 
 game_tags = Table(
     "game_tags",
@@ -34,6 +34,12 @@ class ExplainersBasic(BaseModel):
     id: int
     username: str
     familiarity: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+class ExplainerGroup(BaseModel):
+    familiarity: int
+    users: List[ExplainersBasic]
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -105,7 +111,7 @@ class GameResponseWithDetails(BaseModel):
     best_playercount: Optional[int]
     min_recommended_playercount: Optional[int]
     max_recommended_playercount: Optional[int]
-    explainers: Dict[int, List[ExplainersBasic]] = {} 
+    explainers: Optional[List[ExplainerGroup]] = None
     my_familiarity: Optional[int] = None
 
     class Config:

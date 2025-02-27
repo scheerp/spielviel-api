@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy import asc
 from database import get_db
-from models import Game, GameResponse, GamesWithCountResponse, GameResponseWithDetails, User, UserGameKnowledge, AddEANRequest, ExplainerResponse
+from models import Game, GameResponse, GamesWithCountResponse, GameResponseWithDetails, User, UserGameKnowledge, AddEANRequest
 from utils.filters import apply_game_filters
 from typing import List, Optional
 from similar_games import get_top_similar_game_ids
@@ -73,16 +73,19 @@ def read_game(
 
     top_similar_ids = get_top_similar_game_ids(game.similar_games)
 
-    explainers_by_familiarity = defaultdict(list)
+    explainer_groups_dict = defaultdict(list)
     for uk in game.user_knowledge:
         if uk.familiarity > 0:
-            explainers_by_familiarity[uk.familiarity].append({
+            explainer_groups_dict[uk.familiarity].append({
                 "id": uk.user.id,
                 "username": uk.user.username,
                 "familiarity": uk.familiarity
             })
 
-    explainers_by_familiarity = dict(sorted(explainers_by_familiarity.items(), reverse=True))
+    explainer_groups = [
+        {"familiarity": familiarity, "users": users}
+        for familiarity, users in sorted(explainer_groups_dict.items(), key=lambda x: x[0], reverse=True)
+    ]
 
     my_familiarity = None
     if user_id is not None:
@@ -99,10 +102,9 @@ def read_game(
     }
 
     if user_id is not None:
-        response_data["explainers"] = explainers_by_familiarity
+        response_data["explainers"] = explainer_groups
 
     return response_data
-
 
 
 @router.get("/borrowed-games", response_model=GamesWithCountResponse)

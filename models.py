@@ -11,14 +11,6 @@ game_tags = Table(
     Column("tag_id", Integer, ForeignKey("tags.id"), primary_key=True),
 )
 
-class ExplainerResponse(BaseModel):
-    id: int
-    username: str
-    familiarity: int
-
-    class Config:
-        from_attributes = True
-
 class UserGameKnowledge(Base):
     __tablename__ = "user_game_knowledge"
 
@@ -42,6 +34,14 @@ class ExplainerGroup(BaseModel):
     users: List[ExplainersBasic]
 
     model_config = ConfigDict(from_attributes=True)
+
+    
+class GameExplainersResponse(BaseModel):
+    my_familiarity: Optional[int]
+    explainers: List[ExplainerGroup]
+
+    model_config = ConfigDict(from_attributes=True)
+
 
 class UserGameKnowledgeRequest(BaseModel):
     game_id: int
@@ -110,9 +110,7 @@ class GameResponseWithDetails(BaseModel):
     complexity_label: Optional[str]
     best_playercount: Optional[int]
     min_recommended_playercount: Optional[int]
-    max_recommended_playercount: Optional[int]    
-    explainers: List[ExplainerGroup] = []
-    my_familiarity: Optional[int] = 0
+    max_recommended_playercount: Optional[int]
 
     class Config:
         from_attributes = True

@@ -1,7 +1,9 @@
-from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy.orm import Session, joinedload
 from database import get_db
-from models import UserGameKnowledge, User, UserGameKnowledgeResponse, UserGameKnowledgeRequest
+from utils.errors import create_error
+from collections import defaultdict
+from models import UserGameKnowledge, User, UserGameKnowledgeResponse, UserGameKnowledgeRequest, GameExplainersResponse, Game
 from auth import require_role
 
 router = APIRouter()
@@ -31,3 +33,39 @@ def update_game_familiarity(
     db.commit()
     db.refresh(record)
     return record
+
+@router.get("/{game_id}/explainers", response_model=GameExplainersResponse)
+def get_game_explainers(
+    game_id: int,
+    user_id: int = Query(..., alias="user_id"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("helper"))
+):
+    game = (
+        db.query(Game)
+        .options(joinedload(Game.user_knowledge).joinedload(UserGameKnowledge.user))
+        .filter(Game.id == game_id)
+        .first()
+    )
+    if not game:
+        create_error(status_code=404, error_code="NO_GAMES_AVAILABLE")
+
+    explainer_groups_dict = defaultdict(list)
+    my_familiarity = None
+
+    for uk in game.user_knowledge:
+        if uk.familiarity > 0:
+            explainer_groups_dict[uk.familiarity].append({
+                "id": uk.user.id,
+                "username": uk.user.username,
+                "familiarity": uk.familiarity
+            })
+        if uk.user.id == user_id:
+            my_familiarity = uk.familiarity
+
+    explainer_groups = [
+        {"familiarity": familiarity, "users": users}
+        for familiarity, users in sorted(explainer_groups_dict.items(), key=lambda x: x[0], reverse=True)
+    ]
+    
+    return {"my_familiarity": my_familiarity, "explainers": explainer_groups}

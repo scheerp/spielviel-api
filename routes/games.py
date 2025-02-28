@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy import asc
 from database import get_db
-from models import Game, GameResponse, GamesWithCountResponse, GameResponseWithDetails, User, AddEANRequest
+from models import Game, GameResponse, GamesWithCountResponse, GameResponseWithDetails, User, UserGameKnowledge, AddEANRequest
 from utils.filters import apply_game_filters
 from typing import List, Optional
 from similar_games import get_top_similar_game_ids
@@ -21,14 +21,28 @@ def read_all_games(
     min_player_count: int = Query(1, ge=1),
     player_age: int = Query(5, ge=0),
     show_missing_ean_only: bool = Query(False),
-    complexities: list[str] = Query(None, description="Liste von Complexity-Labels (z.B. ?complexities=einsteiger&complexities=fortgeschritten)")
+    complexities: list[str] = Query(None, description="Liste von Complexity-Labels (z.B. ?complexities=einsteiger&complexities=fortgeschritten)"),
+    user_id: int = Query(None, description="ID des Nutzers, für den my_familiarity geholt werden soll")
 ):
     query = db.query(Game).options(joinedload(Game.tags)).order_by(asc(Game.name))
     query = apply_game_filters(query, filter_text, show_available_only, min_player_count, player_age, show_missing_ean_only, complexities)
     total_games = query.count()
     games = query.offset(offset).limit(limit).all()
 
-    return {"games": games, "total": total_games}
+    user_familiarity = {}
+    if user_id:
+        user_knowledge = db.query(UserGameKnowledge).filter(UserGameKnowledge.user_id == user_id).all()
+        user_familiarity = {uk.game_id: uk.familiarity for uk in user_knowledge}
+
+    game_responses = [
+        GameResponse(
+            **game.__dict__,
+            my_familiarity=user_familiarity.get(game.id)
+        )
+        for game in games
+    ]
+
+    return {"games": game_responses, "total": total_games}
 
 
 @router.get("/count")

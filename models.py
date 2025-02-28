@@ -16,7 +16,7 @@ class UserGameKnowledge(Base):
 
     user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
     game_id = Column(Integer, ForeignKey("games.id"), primary_key=True)
-    familiarity = Column(Integer, nullable=False)  # z.B. 0 = unbekannt, 5 = expertenwissen
+    familiarity = Column(Integer, nullable=False)
 
     user = relationship("User", back_populates="game_knowledge")
     game = relationship("Game", back_populates="user_knowledge")
@@ -135,6 +135,7 @@ class GameResponse(BaseModel):
     best_playercount: Optional[int]
     min_recommended_playercount: Optional[int]
     max_recommended_playercount: Optional[int]
+    my_familiarity: Optional[int] = None
 
     class Config:
         from_attributes = True

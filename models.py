@@ -1,8 +1,45 @@
-from sqlalchemy import Table, Column, Integer, String, Boolean, Float, ForeignKey, DateTime
+from sqlalchemy import Table, Column, Integer, String, Boolean, Float, ForeignKey, DateTime, func
 from database import Base
 from sqlalchemy.orm import relationship
 from pydantic import BaseModel, ConfigDict
 from typing import List, Optional
+from datetime import  datetime, timezone
+
+class PlayerSearchCreate(BaseModel):
+    game_id: int
+    current_players: int
+    players_needed: int
+    location: str
+    details: Optional[str] = None
+
+class PlayerSearchResponse(BaseModel):
+    id: int
+    game_id: int
+    current_players: int
+    players_needed: int
+    location: str
+    details: str
+    can_edit: bool 
+    created_at: datetime
+    expires_at: datetime
+
+    @property
+    def is_active(self) -> bool:
+        """Berechnet, ob das Gesuch noch aktiv ist."""
+        return self.expires_at > datetime.now(timezone.utc)
+
+# Antwortmodell für das Erstellen eines Gesuchs
+class PlayerSearchCreateResponse(BaseModel):
+    id: int
+    game_id: int
+    current_players: int
+    players_needed: int
+    location: str
+    details: str
+    edit_token: str
+    created_at: datetime
+    expires_at: datetime
+
 
 game_tags = Table(
     "game_tags",
@@ -111,6 +148,7 @@ class GameResponseWithDetails(BaseModel):
     best_playercount: Optional[int]
     min_recommended_playercount: Optional[int]
     max_recommended_playercount: Optional[int]
+    player_searches: List[PlayerSearchResponse]
 
     class Config:
         from_attributes = True
@@ -196,6 +234,7 @@ class Game(Base):
 
     user_knowledge = relationship("UserGameKnowledge", back_populates="game")
     tags = relationship("Tag", secondary=game_tags, back_populates="games", cascade="all, delete")
+    player_searches = relationship("PlayerSearch", back_populates="game", cascade="all, delete-orphan")
     similar_games = relationship(
         "GameSimilarity",
         primaryjoin="Game.id == GameSimilarity.game_id",
@@ -228,3 +267,21 @@ class Tag(Base):
     priority = Column(Integer, default=0)
     is_active = Column(Boolean, default=True)
     games = relationship("Game", secondary=game_tags, back_populates="tags")
+
+
+class PlayerSearch(Base):
+    __tablename__ = "player_search"
+
+    id = Column(Integer, primary_key=True, index=True)
+    game_id = Column(Integer, ForeignKey("games.id"), nullable=False)
+    current_players = Column(Integer, nullable=False)
+    players_needed = Column(Integer, nullable=False)
+    location = Column(String, nullable=False)
+    details = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    edit_token = Column(String, unique=True, nullable=False)
+
+    game = relationship("Game", back_populates="player_searches")
+
+

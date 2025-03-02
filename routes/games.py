@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy import asc
 from database import get_db
-from models import Game, GameResponse, GamesWithCountResponse, GameResponseWithDetails, User, UserGameKnowledge, AddEANRequest
+from models import Game, GameResponse, GamesWithCountResponse, GameResponseWithDetails, User, UserGameKnowledge, AddEANRequest, PlayerSearchResponse
 from utils.filters import apply_game_filters
 from typing import List, Optional
 from similar_games import get_top_similar_game_ids
@@ -66,23 +66,72 @@ def get_games_count(
 
 
 @router.get("/game/{game_id}", response_model=GameResponseWithDetails)
-def read_game(game_id: int, db: Session = Depends(get_db)):
-    game = (
-        db.query(Game)
-        .options(joinedload(Game.tags), joinedload(Game.similar_games))
-        .filter(Game.id == game_id)
-        .first()
-    )
+def read_game(game_id: int, db: Session = Depends(get_db), edit_tokens: Optional[list[str]] = Query(None)):
+    game = db.query(Game).options(
+        joinedload(Game.tags),
+        joinedload(Game.similar_games),
+        joinedload(Game.player_searches)  # PlayerSearches direkt laden
+    ).filter(Game.id == game_id).first()
+
     if not game:
         create_error(status_code=404, error_code="NO_GAMES_AVAILABLE")
 
-    top_similar_ids = get_top_similar_game_ids(game.similar_games)
+    # Berechnen der `can_edit`-Flags für jedes Gesuch
+    if edit_tokens:
+        for search in game.player_searches:
+            search.can_edit = search.edit_token in edit_tokens
+    else:
+        for search in game.player_searches:
+            search.can_edit = False
 
-    return {
-        **game.__dict__,
-        "tags": game.tags,
-        "similar_games": top_similar_ids
-    }
+    # Rückgabe der Antwort, einschließlich aller erforderlichen Felder
+    return GameResponseWithDetails(
+        id=game.id,
+        bgg_id=game.bgg_id,  # Sicherstellen, dass `bgg_id` gesetzt ist
+        name=game.name,
+        description=game.description or None,  # Fallback auf None, falls nicht vorhanden
+        german_description=game.german_description or None,
+        tags=game.tags,
+        similar_games=[game_similar.id for game_similar in game.similar_games],
+        player_searches=[
+            PlayerSearchResponse(
+                id=search.id,
+                game_id=search.game_id,
+                current_players=search.current_players,
+                players_needed=search.players_needed,
+                location=search.location,
+                details=search.details or None,  # Falls keine Details vorhanden sind
+                created_at=search.created_at,
+                expires_at=search.expires_at,
+                can_edit=search.can_edit,
+                edit_token=search.edit_token if search.can_edit else None
+            )
+            for search in game.player_searches
+        ],
+        year_published=game.year_published or None,
+        min_players=game.min_players or None,
+        max_players=game.max_players or None,
+        min_playtime=game.min_playtime or None,
+        max_playtime=game.max_playtime or None,
+        playing_time=game.playing_time or None,
+        rating=game.rating or None,
+        ean=game.ean or None,
+        available=game.available,
+        borrow_count=game.borrow_count,
+        quantity=game.quantity,
+        acquired_from=game.acquired_from or None,
+        inventory_location=game.inventory_location or None,
+        private_comment=game.private_comment or None,
+        img_url=game.img_url or None,
+        thumbnail_url=game.thumbnail_url or None,
+        player_age=game.player_age or None,
+        complexity=game.complexity or None,
+        complexity_label=game.complexity_label or None,
+        best_playercount=game.best_playercount or None,
+        min_recommended_playercount=game.min_recommended_playercount or None,
+        max_recommended_playercount=game.max_recommended_playercount or None,
+    )
+
 
 
 @router.get("/borrowed-games", response_model=GamesWithCountResponse)

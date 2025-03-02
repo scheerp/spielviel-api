@@ -25,6 +25,7 @@ def create_player_search(request: PlayerSearchCreate, db: Session = Depends(get_
     new_search = PlayerSearch(
         game_id=request.game_id,
         current_players=request.current_players,
+        name=request.name,
         players_needed=request.players_needed,
         location=request.location,
         details=request.details,
@@ -67,6 +68,7 @@ def get_all_player_searches(
         result.append(PlayerSearchResponse(
             id=search.id,
             game_id=search.game_id,
+            name=search.name,
             current_players=search.current_players,
             players_needed=search.players_needed,
             location=search.location,
@@ -99,6 +101,7 @@ def update_player_search(
 
     search.current_players = request.current_players
     search.players_needed = request.players_needed
+    search.name = request.name
     search.location = request.location
 
     db.commit()

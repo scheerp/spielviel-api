@@ -67,6 +67,7 @@ def get_games_count(
 
 @router.get("/game/{game_id}", response_model=GameResponseWithDetails)
 def read_game(game_id: int, db: Session = Depends(get_db), edit_tokens: Optional[list[str]] = Query(None)):
+    # Spiel abrufen, mit den zugehörigen Tags, ähnlichen Spielen und PlayerSearches
     game = db.query(Game).options(
         joinedload(Game.tags),
         joinedload(Game.similar_games),
@@ -78,20 +79,25 @@ def read_game(game_id: int, db: Session = Depends(get_db), edit_tokens: Optional
 
     top_similar_ids = get_top_similar_game_ids(game.similar_games)
 
-    # Berechnen der `can_edit`-Flags für jedes Gesuch
+    # Filtern der PlayerSearches, nur die mit matching game_id
+    filtered_player_searches = [
+        search for search in game.player_searches if search.game_id == game_id
+    ]
+
+    # Berechnen der `can_edit`-Flags für jedes gefilterte Gesuch
     if edit_tokens:
-        for search in game.player_searches:
+        for search in filtered_player_searches:
             search.can_edit = search.edit_token in edit_tokens
     else:
-        for search in game.player_searches:
+        for search in filtered_player_searches:
             search.can_edit = False
 
     # Rückgabe der Antwort, einschließlich aller erforderlichen Felder
     return GameResponseWithDetails(
         id=game.id,
-        bgg_id=game.bgg_id,  # Sicherstellen, dass `bgg_id` gesetzt ist
+        bgg_id=game.bgg_id,
         name=game.name,
-        description=game.description or None,  # Fallback auf None, falls nicht vorhanden
+        description=game.description or None,
         german_description=game.german_description or None,
         tags=game.tags,
         similar_games=top_similar_ids,
@@ -101,14 +107,15 @@ def read_game(game_id: int, db: Session = Depends(get_db), edit_tokens: Optional
                 game_id=search.game_id,
                 current_players=search.current_players,
                 players_needed=search.players_needed,
+                name=search.name,
                 location=search.location,
-                details=search.details or None,  # Falls keine Details vorhanden sind
+                details=search.details or None,
                 created_at=search.created_at,
                 expires_at=search.expires_at,
                 can_edit=search.can_edit,
                 edit_token=search.edit_token if search.can_edit else None
             )
-            for search in game.player_searches
+            for search in filtered_player_searches  # Verwenden der gefilterten `player_searches`
         ],
         year_published=game.year_published or None,
         min_players=game.min_players or None,
@@ -133,6 +140,7 @@ def read_game(game_id: int, db: Session = Depends(get_db), edit_tokens: Optional
         min_recommended_playercount=game.min_recommended_playercount or None,
         max_recommended_playercount=game.max_recommended_playercount or None,
     )
+
 
 
 

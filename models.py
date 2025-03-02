@@ -7,6 +7,7 @@ from datetime import  datetime, timezone
 
 class PlayerSearchCreate(BaseModel):
     game_id: int
+    name: str
     current_players: int
     players_needed: int
     location: str
@@ -18,6 +19,7 @@ class PlayerSearchResponse(BaseModel):
     current_players: int
     players_needed: int
     location: str
+    name: str
     details: str
     can_edit: bool 
     created_at: datetime
@@ -28,10 +30,10 @@ class PlayerSearchResponse(BaseModel):
         """Berechnet, ob das Gesuch noch aktiv ist."""
         return self.expires_at > datetime.now(timezone.utc)
 
-# Antwortmodell für das Erstellen eines Gesuchs
 class PlayerSearchCreateResponse(BaseModel):
     id: int
     game_id: int
+    name: str
     current_players: int
     players_needed: int
     location: str
@@ -273,6 +275,7 @@ class PlayerSearch(Base):
     __tablename__ = "player_search"
 
     id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
     game_id = Column(Integer, ForeignKey("games.id"), nullable=False)
     current_players = Column(Integer, nullable=False)
     players_needed = Column(Integer, nullable=False)

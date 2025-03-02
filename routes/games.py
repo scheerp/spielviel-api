@@ -76,6 +76,8 @@ def read_game(game_id: int, db: Session = Depends(get_db), edit_tokens: Optional
     if not game:
         create_error(status_code=404, error_code="NO_GAMES_AVAILABLE")
 
+    top_similar_ids = get_top_similar_game_ids(game.similar_games)
+
     # Berechnen der `can_edit`-Flags für jedes Gesuch
     if edit_tokens:
         for search in game.player_searches:
@@ -92,7 +94,7 @@ def read_game(game_id: int, db: Session = Depends(get_db), edit_tokens: Optional
         description=game.description or None,  # Fallback auf None, falls nicht vorhanden
         german_description=game.german_description or None,
         tags=game.tags,
-        similar_games=[game_similar.id for game_similar in game.similar_games],
+        similar_games=top_similar_ids,
         player_searches=[
             PlayerSearchResponse(
                 id=search.id,

@@ -6,12 +6,20 @@ from typing import List, Optional
 from datetime import  datetime, timezone
 
 class PlayerSearchCreate(BaseModel):
+    name: str
     game_id: int
+    current_players: int
+    players_needed: int
+    location: str
+    details: Optional[str] = None
+
+class PlayerSearchEdit(BaseModel):
     name: str
     current_players: int
     players_needed: int
     location: str
     details: Optional[str] = None
+    edit_token: str
 
 class PlayerSearchResponse(BaseModel):
     id: int
@@ -20,10 +28,11 @@ class PlayerSearchResponse(BaseModel):
     players_needed: int
     location: str
     name: str
-    details: str
+    details: Optional[str] = None
     can_edit: bool 
     created_at: datetime
     expires_at: datetime
+    edit_token: Optional[str]
 
     @property
     def is_active(self) -> bool:
@@ -37,7 +46,7 @@ class PlayerSearchCreateResponse(BaseModel):
     current_players: int
     players_needed: int
     location: str
-    details: str
+    details: Optional[str] = None
     edit_token: str
     created_at: datetime
     expires_at: datetime

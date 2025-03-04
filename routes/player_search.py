@@ -41,10 +41,10 @@ def get_all_player_searches(
             current_players=search.current_players,
             players_needed=search.players_needed,
             location=search.location,
-            details=search.details,  # Setze `None` wenn details leer sind (Pydantic erlaubt `None`)
+            details=search.details,
             created_at=search.created_at,
             expires_at=search.expires_at,
-            can_edit=can_edit,  # Flag, ob es bearbeitbar ist
+            can_edit=can_edit,
             edit_token=search.edit_token if can_edit else None  # Optional, nur wenn bearbeitbar
         ))
 

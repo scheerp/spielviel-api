@@ -65,6 +65,8 @@ def get_games_count(
     return {"total_count": total_count}
 
 
+from datetime import datetime, timezone, timedelta
+
 @router.get("/game/{game_id}", response_model=GameResponseWithDetails)
 def read_game(game_id: int, db: Session = Depends(get_db), edit_tokens: Optional[list[str]] = Query(None)):
     # Spiel abrufen, mit den zugehörigen Tags, ähnlichen Spielen und PlayerSearches
@@ -79,9 +81,15 @@ def read_game(game_id: int, db: Session = Depends(get_db), edit_tokens: Optional
 
     top_similar_ids = get_top_similar_game_ids(game.similar_games)
 
-    # Filtern der PlayerSearches, nur die mit matching game_id
+    # Heutiges Datum berechnen
+    now = datetime.now(timezone.utc)
+    today_start = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
+    today_end = today_start + timedelta(days=1)
+
+    # Filtern der PlayerSearches: Nur heutige Gesuche mit passender game_id
     filtered_player_searches = [
-        search for search in game.player_searches if search.game_id == game_id
+        search for search in game.player_searches 
+        if search.game_id == game_id and today_start <= search.created_at < today_end
     ]
 
     # Berechnen der `can_edit`-Flags für jedes gefilterte Gesuch
@@ -115,7 +123,7 @@ def read_game(game_id: int, db: Session = Depends(get_db), edit_tokens: Optional
                 can_edit=search.can_edit,
                 edit_token=search.edit_token if search.can_edit else None
             )
-            for search in filtered_player_searches  # Verwenden der gefilterten `player_searches`
+            for search in filtered_player_searches
         ],
         year_published=game.year_published or None,
         min_players=game.min_players or None,

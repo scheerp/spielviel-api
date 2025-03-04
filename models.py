@@ -296,4 +296,6 @@ class PlayerSearch(Base):
 
     game = relationship("Game", back_populates="player_searches")
 
-
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str

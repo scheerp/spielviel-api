@@ -17,6 +17,7 @@ ERROR_CODES = {
     "INVALID_PASSWORD": {"message": "Ungültiges Passwort."},
     "PAYER_SEARCH_NOT_FOUND": {"message": "Das Mitspieler-Gesuch wurde nicht gefunden."},
     "INVALID_PAYER_SEARCH_TOKEN": {"message": "Ungültiger Token für Mitspieler-Gesuch."},
+    "INVALID_CURRENT_PASSWORD": {"message": "Ungültiges aktuelles Passwort."}
 }
 
 # Helper-Funktion für Fehler

@@ -4,9 +4,9 @@ from fastapi import APIRouter, Depends, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
-from auth import hash_password, create_access_token, verify_password, get_current_user, ACCESS_TOKEN_EXPIRE_MINUTES
+from auth import hash_password, create_access_token, verify_password, require_role, ACCESS_TOKEN_EXPIRE_MINUTES
 from database import get_db
-from models import User, RegisterRequest
+from models import User, RegisterRequest, ChangePasswordRequest
 from datetime import timedelta
 from utils.errors import create_error
 
@@ -75,3 +75,23 @@ def register_user(request: RegisterRequest, db: Session = Depends(get_db)):
     db.refresh(user)
 
     return {"message": "User erfolgreich erstellt", "username": user.username}
+
+@router.put("/change-password")
+def change_password(
+    request: ChangePasswordRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("guest"))
+):
+    # Überprüfen, ob das aktuelle Passwort korrekt ist
+    if not verify_password(request.current_password, current_user.hashed_password):
+        create_error(status_code=status.HTTP_400_BAD_REQUEST, error_code="INVALID_CURRENT_PASSWORD")
+
+    # Neues Passwort hashen
+    new_hashed_password = hash_password(request.new_password)
+
+    # Passwort in der Datenbank aktualisieren
+    current_user.hashed_password = new_hashed_password
+    db.commit()
+    db.refresh(current_user)
+
+    return {"message": "Passwort erfolgreich geändert"}

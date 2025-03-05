@@ -124,7 +124,7 @@ def update_similar_games_endpoint(
     finally:
         import_lock.release()
 
-@router.put("/admin/reset_borrow_count")
+@router.put("/reset_borrow_count")
 def reset_borrow_count_for_all_games(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin"))
@@ -136,7 +136,7 @@ def reset_borrow_count_for_all_games(
         "updated_rows": updated_rows
     }
 
-@router.put("/admin/reset_available")
+@router.put("/reset_available")
 def reset_available_for_all_games(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("admin"))
@@ -148,7 +148,7 @@ def reset_available_for_all_games(
         "updated_rows": updated_rows
     }
 
-@router.put("/admin/reset-password")
+@router.put("/reset-password")
 def reset_user_password(
     username_or_email: str,
     db: Session = Depends(get_db),

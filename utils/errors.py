@@ -10,6 +10,7 @@ ERROR_CODES = {
     "NO_COPIES_AVAILABLE": {"message": "Es sind keine verfügbaren Kopien vorhanden."},
     "ALL_COPIES_AVAILABLE": {"message": "Alle verfügbaren Kopien bereits zurückgegeben."},
     "USER_ALREADY_EXISTS": {"message": "Benutzername oder E-Mail bereits vergeben."},
+    "USER_NOT_FOUND": {"message": "Der User wurde nicht gefunden."},
     "INTERNAL_ERROR": {"message": "Das hat leider nicht funktioniert."},
     "IMPORT_IN_PROGRESS": {"message": "Ein Importvorgang läuft bereits. Bitte warte, bis dieser abgeschlossen ist."},
     "INVALID_INVITE_CODE": {"message": "Ungültiger Einladungscode."},

@@ -264,6 +264,7 @@ class User(Base):
     role = Column(String, default="helper")
     reset_token = Column(String, nullable=True)
     reset_token_expires = Column(DateTime, nullable=True)
+    force_password_change = Column(Boolean, default=False)
 
     game_knowledge = relationship("UserGameKnowledge", back_populates="user")
 

@@ -36,14 +36,16 @@ def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db:
     token_data = {
         "id": user.id,
         "sub": user.username,
-        "role": user.role
+        "role": user.role,
+        "password_change": user.force_password_change
     }
 
     access_token = create_access_token(
         data=token_data,
         expires_delta=access_token_expires
     )
-    return {"access_token": access_token, "token_type": "bearer", "role": user.role, "id": user.id, "username": user.username}
+    return {"access_token": access_token, "token_type": "bearer", "role": user.role, "id": user.id, "username": user.username,
+        "password_change": user.force_password_change}
 
 
 
@@ -82,15 +84,14 @@ def change_password(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("guest"))
 ):
-    # Überprüfen, ob das aktuelle Passwort korrekt ist
     if not verify_password(request.current_password, current_user.hashed_password):
         create_error(status_code=status.HTTP_400_BAD_REQUEST, error_code="INVALID_CURRENT_PASSWORD")
 
-    # Neues Passwort hashen
-    new_hashed_password = hash_password(request.new_password)
+    current_user.hashed_password = hash_password(request.new_password)
 
-    # Passwort in der Datenbank aktualisieren
-    current_user.hashed_password = new_hashed_password
+    if current_user.force_password_change:
+        current_user.force_password_change = False
+
     db.commit()
     db.refresh(current_user)
 

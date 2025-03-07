@@ -70,7 +70,7 @@ def get_game_explainers(
     my_familiarity = None
 
     for uk in game.user_knowledge:
-        if uk.familiarity > 0:
+        if uk.familiarity > 1:
             explainer_groups_dict[uk.familiarity].append({
                 "id": uk.user.id,
                 "username": uk.user.username,

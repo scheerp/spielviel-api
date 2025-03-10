@@ -57,6 +57,7 @@ def get_all_player_searches(
         # Gesuch hinzufügen
         grouped_results[search.game_id]["player_searches"].append({
             "id": search.id,
+            "name": search.name,
             "current_players": search.current_players,
             "players_needed": search.players_needed,
             "location": search.location,

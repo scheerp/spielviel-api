@@ -61,15 +61,16 @@ class PlayerSearchCreateResponse(BaseModel):
 game_tags = Table(
     "game_tags",
     Base.metadata,
-    Column("game_id", Integer, ForeignKey("games.id"), primary_key=True),
-    Column("tag_id", Integer, ForeignKey("tags.id"), primary_key=True),
+    Column("game_id", Integer, ForeignKey("games.id", ondelete="CASCADE"), primary_key=True),
+    Column("tag_id", Integer, ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True),
 )
+
 
 class UserGameKnowledge(Base):
     __tablename__ = "user_game_knowledge"
 
     user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
-    game_id = Column(Integer, ForeignKey("games.id"), primary_key=True)
+    game_id = Column(Integer, ForeignKey("games.id", ondelete="CASCADE"), primary_key=True)
     familiarity = Column(Integer, nullable=False)
 
     user = relationship("User", back_populates="game_knowledge")
@@ -208,8 +209,8 @@ class GameSimilarity(Base):
     __tablename__ = "game_similarities"
 
     id = Column(Integer, primary_key=True, index=True)
-    game_id = Column(Integer, ForeignKey("games.id"), nullable=False, index=True)
-    similar_game_id = Column(Integer, ForeignKey("games.id"), nullable=False, index=True)
+    game_id = Column(Integer, ForeignKey("games.id", ondelete="CASCADE"), nullable=False, index=True)
+    similar_game_id = Column(Integer, ForeignKey("games.id", ondelete="CASCADE"), nullable=False, index=True)
     similarity_score = Column(Float, nullable=False)
     shared_tags_count = Column(Integer, nullable=False)
     tag_priority_sum = Column(Float, nullable=True)
@@ -292,7 +293,7 @@ class PlayerSearch(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
-    game_id = Column(Integer, ForeignKey("games.id"), nullable=False)
+    game_id = Column(Integer, ForeignKey("games.id", ondelete="CASCADE"), nullable=False)
     current_players = Column(Integer, nullable=False)
     players_needed = Column(Integer, nullable=False)
     location = Column(String, nullable=False)

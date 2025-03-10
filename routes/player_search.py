@@ -45,10 +45,15 @@ def get_all_player_searches(
             grouped_results[search.game_id]["game"] = {
                 "id": game.id,
                 "name": game.name,
+                "min_players": game.min_players,
                 "max_players": game.max_players,
+                "min_playtime": game.min_playtime,
+                "max_playtime": game.max_playtime,
+                "complexity_label": game.complexity_label,
                 "img_url": game.img_url,
                 "thumbnail_url": game.thumbnail_url,
                 "best_playercount": game.best_playercount,
+                "player_age": game.player_age,
             }
 
         # Überprüfen, ob das edit_token des Gesuchs in der Liste der edit_tokens ist

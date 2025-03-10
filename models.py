@@ -29,10 +29,16 @@ class PlayerSearchResponse(BaseModel):
     location: str
     name: str
     details: Optional[str] = None
-    can_edit: bool 
+    can_edit: bool
     created_at: datetime
     expires_at: datetime
     edit_token: Optional[str]
+
+    game_name: Optional[str] = None
+    max_players: Optional[int] = None
+    img_url: Optional[str] = None
+    thumbnail_url: Optional[str] = None
+    best_playercount: Optional[int] = None
 
     @property
     def is_active(self) -> bool:

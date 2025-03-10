@@ -2,53 +2,72 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 import uuid
 from datetime import datetime, timedelta, timezone
-
-from models import PlayerSearch, Game, PlayerSearchCreate, PlayerSearchEdit, PlayerSearchResponse, PlayerSearchCreateResponse
+from collections import defaultdict
+from models import PlayerSearch, Game, PlayerSearchCreate, PlayerSearchEdit, PlayerSearchCreateResponse
 from database import get_db
 from utils.errors import create_error
 from fastapi import Query
 
 router = APIRouter()
 
-
-@router.get("/", response_model=list[PlayerSearchResponse])
+@router.get("/", response_model=list[dict])
 def get_all_player_searches(
     db: Session = Depends(get_db),
     edit_tokens: list[str] = Query(None)  # Optionales Array von edit_tokens als Query-Parameter
 ):
-    """Gibt alle Mitspieler-Gesuche vom aktuellen Tag zurück (mit Aktiv-Status)."""
+    """Gibt alle Mitspieler-Gesuche vom aktuellen Tag zurück, gruppiert nach Spiel."""
     
     now = datetime.now(timezone.utc)
     today_start = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
     today_end = today_start + timedelta(days=1)
 
-    # Abfragen aller Gesuche, die heute erstellt wurden
+    # Alle heutigen PlayerSearch-Objekte abrufen
     searches = db.query(PlayerSearch).filter(
-        PlayerSearch.created_at >= today_start,  # Nur heutige Gesuche
+        PlayerSearch.created_at >= today_start,
         PlayerSearch.created_at < today_end
     ).all()
 
-    # Ergebnisliste mit dem `can_edit`-Flag für jedes Gesuch
-    result = []
-    for search in searches:
-        # Überprüfen, ob das edit_token des Gesuchs in der Liste der edit_tokens des Benutzers enthalten ist
-        can_edit = search.edit_token in edit_tokens if edit_tokens else False
-        
-        result.append(PlayerSearchResponse(
-            id=search.id,
-            game_id=search.game_id,
-            name=search.name,
-            current_players=search.current_players,
-            players_needed=search.players_needed,
-            location=search.location,
-            details=search.details,
-            created_at=search.created_at,
-            expires_at=search.expires_at,
-            can_edit=can_edit,
-            edit_token=search.edit_token if can_edit else None  # Optional, nur wenn bearbeitbar
-        ))
+    # Alle benötigten Spiele auf einmal abrufen (statt in einer Schleife)
+    game_ids = {search.game_id for search in searches}
+    games = db.query(Game).filter(Game.id.in_(game_ids)).all()
+    game_dict = {game.id: game for game in games}  # Mapping für schnelleren Zugriff
 
-    return result
+    # Ergebnisse gruppieren
+    grouped_results = defaultdict(lambda: {"game": None, "player_searches": []})
+
+    for search in searches:
+        game = game_dict.get(search.game_id)
+        if not game:
+            continue  # Falls kein passendes Spiel gefunden wird (sollte nicht passieren)
+
+        # Falls das Spiel noch nicht in den Ergebnissen ist, hinzufügen
+        if grouped_results[search.game_id]["game"] is None:
+            grouped_results[search.game_id]["game"] = {
+                "id": game.id,
+                "name": game.name,
+                "max_players": game.max_players,
+                "img_url": game.img_url,
+                "thumbnail_url": game.thumbnail_url,
+                "best_playercount": game.best_playercount,
+            }
+
+        # Überprüfen, ob das edit_token des Gesuchs in der Liste der edit_tokens ist
+        can_edit = search.edit_token in edit_tokens if edit_tokens else False
+
+        # Gesuch hinzufügen
+        grouped_results[search.game_id]["player_searches"].append({
+            "id": search.id,
+            "current_players": search.current_players,
+            "players_needed": search.players_needed,
+            "location": search.location,
+            "details": search.details,
+            "created_at": search.created_at,
+            "expires_at": search.expires_at,
+            "can_edit": can_edit,
+            "edit_token": search.edit_token if can_edit else None,
+        })
+
+    return list(grouped_results.values())
 
 
 

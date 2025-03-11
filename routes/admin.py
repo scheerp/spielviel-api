@@ -167,4 +167,4 @@ def reset_user_password(
     db.commit()
     db.refresh(user)
 
-    return {"message": f"Passwort für {user.username} zurückgesetzt:, Nutzer sollte neues Passwort setzen."}
+    return {"message": f"Passwort erfolgreich zurückgesetzt!", "default": default_password, "user": user.username }

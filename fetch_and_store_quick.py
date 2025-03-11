@@ -5,7 +5,7 @@ from bs4 import BeautifulSoup
 from typing import List, Dict
 from sqlalchemy.orm import Session
 from database import SessionLocal
-from models import Game
+from models import Game, GameSimilarity
 from utils.filters import assign_complexity_label
 from fetch_and_store_private import parse_collection
 
@@ -189,6 +189,13 @@ def add_games_to_db_quick(games):
         # 2️⃣ **Spiele entfernen, die nicht mehr in der neuen Sammlung sind**
         for existing_game in existing_games:
             if existing_game.bgg_id not in new_games_by_bgg_id:
+                # 1️⃣ Erst alle GameSimilarity-Einträge löschen
+                db.query(GameSimilarity).filter(
+                    (GameSimilarity.game_id == existing_game.id) |
+                    (GameSimilarity.similar_game_id == existing_game.id)
+                ).delete(synchronize_session=False)
+
+                # 2️⃣ Dann das Spiel löschen
                 db.delete(existing_game)
                 deleted_count += 1
                 print(f"🗑️ Spiel gelöscht: {existing_game.name} (BGG {existing_game.bgg_id})")

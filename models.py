@@ -69,7 +69,7 @@ game_tags = Table(
 class UserGameKnowledge(Base):
     __tablename__ = "user_game_knowledge"
 
-    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
     game_id = Column(Integer, ForeignKey("games.id", ondelete="CASCADE"), primary_key=True)
     familiarity = Column(Integer, nullable=False)
 
@@ -250,7 +250,7 @@ class Game(Base):
     min_recommended_playercount = Column(Integer, nullable=True)
     max_recommended_playercount = Column(Integer, nullable=True)
 
-    user_knowledge = relationship("UserGameKnowledge", back_populates="game")
+    user_knowledge = relationship("UserGameKnowledge", back_populates="game", cascade="all, delete-orphan")
     tags = relationship("Tag", secondary=game_tags, back_populates="games", cascade="all, delete")
     player_searches = relationship("PlayerSearch", back_populates="game", cascade="all, delete-orphan")
     similar_games = relationship(

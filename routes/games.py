@@ -19,7 +19,7 @@ def read_all_games(
     filter_text: str = Query(None),
     show_available_only: bool = Query(False),
     min_player_count: int = Query(1, ge=1),
-    player_age: int = Query(5, ge=0),
+    player_age: int = Query(0, ge=0),
     show_missing_ean_only: bool = Query(False),
     complexities: list[str] = Query(None, description="Liste von Complexity-Labels (z.B. ?complexities=einsteiger&complexities=fortgeschritten)"),
     user_id: int = Query(None, description="ID des Nutzers, für den my_familiarity geholt werden soll")

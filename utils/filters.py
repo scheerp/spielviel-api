@@ -31,8 +31,8 @@ def apply_game_filters(
     query: Query, 
     filter_text: Optional[str] = None, 
     show_available_only: bool = False, 
-    min_player_count: int = 1, 
-    player_age: int = 5, 
+    min_player_count: int = 0, 
+    player_age: int = 0, 
     show_missing_ean_only: bool = False,
     complexities: Optional[List[str]] = None
 ) -> Query:
@@ -61,10 +61,12 @@ def apply_game_filters(
         query = query.filter(Game.available > 0)
 
     # 🔹 Filter by player count
-    query = query.filter(Game.max_players >= min_player_count)
+    if min_player_count > 0:
+        query = query.filter(and_(Game.max_players >= min_player_count, Game.min_players <= min_player_count))
 
     # 🔹 Filter by player age
-    query = query.filter(Game.player_age >= player_age)
+    if player_age > 0:
+        query = query.filter(Game.player_age >= player_age)
 
     # 🔹 Show only games without EAN
     if show_missing_ean_only:

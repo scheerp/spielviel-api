@@ -18,7 +18,7 @@ def read_all_games(
     offset: int = Query(0, ge=0),
     filter_text: str = Query(None),
     show_available_only: bool = Query(False),
-    min_player_count: int = Query(1, ge=1),
+    min_player_count: int = Query(0, ge=0),
     player_age: int = Query(0, ge=0),
     show_missing_ean_only: bool = Query(False),
     complexities: list[str] = Query(None, description="Liste von Complexity-Labels (z.B. ?complexities=einsteiger&complexities=fortgeschritten)"),
@@ -50,8 +50,8 @@ def get_games_count(
     db: Session = Depends(get_db),
     filter_text: str = Query(None, description="Filter nach Namen"),
     show_available_only: bool = Query(False, description="Nur verfügbare Spiele anzeigen"),
-    min_player_count: int = Query(1, ge=1, description="Minimale Spieleranzahl"),
-    player_age: int = Query(5, ge=0, description="Minimales Alter der Spieler"),
+    min_player_count: int = Query(0, ge=0, description="Minimale Spieleranzahl"),
+    player_age: int = Query(0, ge=0, description="Minimales Alter der Spieler"),
     show_missing_ean_only: bool = Query(False, description="Nur Spiele ohne ean anzeigen"),
     complexities: list[str] = Query(None, description="Liste von Complexity-Labels (z.B. ?complexities=einsteiger&complexities=fortgeschritten)")
 ):

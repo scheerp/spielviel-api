@@ -24,10 +24,11 @@ app.include_router(auth_router, prefix="/auth", tags=["Authentication"])
 app.include_router(games_router, prefix="/games", tags=["Games"])
 app.include_router(admin_router, prefix="/admin", tags=["Admin"])
 app.include_router(helper_router, prefix="/helper", tags=["Helper"])
-app.include_router(player_search_router, prefix="/player_search", tags=["Player Search"])
+app.include_router(
+    player_search_router, prefix="/player_search", tags=["Player Search"]
+)
+
 
 @app.get("/")
 def read_root():
     return {"message": "Hello World"}
-
-

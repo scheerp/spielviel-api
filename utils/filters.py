@@ -1,4 +1,4 @@
-from sqlalchemy import or_, and_
+from sqlalchemy import and_
 from typing import List, Optional
 from sqlalchemy.orm import Query
 from models import Game
@@ -12,6 +12,7 @@ COMPLEXITY_MAPPING = [
     {"label": "Expert", "min": 4, "max": 5},
 ]
 
+
 def get_complexity_label(complexity: float) -> str:
     """Gibt das Complexity-Label für einen gegebenen Complexity-Wert zurück."""
     if complexity is None:
@@ -21,6 +22,7 @@ def get_complexity_label(complexity: float) -> str:
             return category["label"]
     return None
 
+
 def assign_complexity_label(game):
     """Setzt das Complexity-Label eines Spiels basierend auf seinem Complexity-Wert."""
     game["complexity_label"] = get_complexity_label(game.get("complexity"))
@@ -28,13 +30,13 @@ def assign_complexity_label(game):
 
 # 🔹 Filter-Funktion für die Spiele-Datenbankabfrage
 def apply_game_filters(
-    query: Query, 
-    filter_text: Optional[str] = None, 
-    show_available_only: bool = False, 
-    min_player_count: int = 0, 
-    player_age: int = 0, 
+    query: Query,
+    filter_text: Optional[str] = None,
+    show_available_only: bool = False,
+    min_player_count: int = 0,
+    player_age: int = 0,
     show_missing_ean_only: bool = False,
-    complexities: Optional[List[str]] = None
+    complexities: Optional[List[str]] = None,
 ) -> Query:
     """
     Applies various filters to the database query.
@@ -46,7 +48,8 @@ def apply_game_filters(
         min_player_count (int): Minimum number of players required.
         player_age (int): Minimum recommended player age.
         show_missing_ean_only (bool): If True, only games without an EAN are shown.
-        complexities (Optional[List[str]]): List of complexity labels (e.g., ["Beginner", "Expert"]).
+        complexities (Optional[List[str]]): List of complexity labels
+            (e.g., ["Beginner", "Expert"]).
 
     Returns:
         Query: The filtered query.
@@ -62,7 +65,12 @@ def apply_game_filters(
 
     # 🔹 Filter by player count
     if min_player_count > 0:
-        query = query.filter(and_(Game.max_players >= min_player_count, Game.min_players <= min_player_count))
+        query = query.filter(
+            and_(
+                Game.max_players >= min_player_count,
+                Game.min_players <= min_player_count,
+            )
+        )
 
     # 🔹 Filter by player age
     if player_age > 0:

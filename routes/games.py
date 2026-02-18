@@ -2,14 +2,26 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session, joinedload, selectinload
 from sqlalchemy import asc
 from database import get_db
-from models import Game, GameResponse, GamesWithCountResponse, GameResponseWithDetails, User, UserGameKnowledge, AddEANRequest, PlayerSearchResponse
+from models import (
+    Game,
+    GameResponse,
+    GamesWithCountResponse,
+    GameResponseWithDetails,
+    User,
+    UserGameKnowledge,
+    AddEANRequest,
+    PlayerSearchResponse,
+)
 from utils.filters import apply_game_filters
 from typing import List, Optional
 from similar_games import get_top_similar_game_ids
 from utils.errors import create_error
 from auth import require_role
+from datetime import datetime, timezone, timedelta
+
 
 router = APIRouter()
+
 
 @router.get("/", response_model=GamesWithCountResponse)
 def read_all_games(
@@ -21,24 +33,41 @@ def read_all_games(
     min_player_count: int = Query(0, ge=0),
     player_age: int = Query(0, ge=0),
     show_missing_ean_only: bool = Query(False),
-    complexities: list[str] = Query(None, description="Liste von Complexity-Labels (z.B. ?complexities=einsteiger&complexities=fortgeschritten)"),
-    user_id: int = Query(None, description="ID des Nutzers, für den my_familiarity geholt werden soll")
+    complexities: list[str] = Query(
+        None,
+        description=(
+            "Liste von Complexity-Labels "
+            "(z.B. ?complexities=einsteiger&complexities=fortgeschritten)"
+        ),
+    ),
+    user_id: int = Query(
+        None, description="ID des Nutzers, für den my_familiarity geholt werden soll"
+    ),
 ):
     query = db.query(Game).options(joinedload(Game.tags)).order_by(asc(Game.name))
-    query = apply_game_filters(query, filter_text, show_available_only, min_player_count, player_age, show_missing_ean_only, complexities)
+    query = apply_game_filters(
+        query,
+        filter_text,
+        show_available_only,
+        min_player_count,
+        player_age,
+        show_missing_ean_only,
+        complexities,
+    )
     total_games = query.count()
     games = query.offset(offset).limit(limit).all()
 
     user_familiarity = {}
     if user_id:
-        user_knowledge = db.query(UserGameKnowledge).filter(UserGameKnowledge.user_id == user_id).all()
+        user_knowledge = (
+            db.query(UserGameKnowledge)
+            .filter(UserGameKnowledge.user_id == user_id)
+            .all()
+        )
         user_familiarity = {uk.game_id: uk.familiarity for uk in user_knowledge}
 
     game_responses = [
-        GameResponse(
-            **game.__dict__,
-            my_familiarity=user_familiarity.get(game.id)
-        )
+        GameResponse(**game.__dict__, my_familiarity=user_familiarity.get(game.id))
         for game in games
     ]
 
@@ -49,32 +78,57 @@ def read_all_games(
 def get_games_count(
     db: Session = Depends(get_db),
     filter_text: str = Query(None, description="Filter nach Namen"),
-    show_available_only: bool = Query(False, description="Nur verfügbare Spiele anzeigen"),
+    show_available_only: bool = Query(
+        False, description="Nur verfügbare Spiele anzeigen"
+    ),
     min_player_count: int = Query(0, ge=0, description="Minimale Spieleranzahl"),
     player_age: int = Query(0, ge=0, description="Minimales Alter der Spieler"),
-    show_missing_ean_only: bool = Query(False, description="Nur Spiele ohne ean anzeigen"),
-    complexities: list[str] = Query(None, description="Liste von Complexity-Labels (z.B. ?complexities=einsteiger&complexities=fortgeschritten)")
+    show_missing_ean_only: bool = Query(
+        False, description="Nur Spiele ohne ean anzeigen"
+    ),
+    complexities: list[str] = Query(
+        None,
+        description=(
+            "Liste von Complexity-Labels "
+            "(z.B. ?complexities=einsteiger&complexities=fortgeschritten)"
+        ),
+    ),
 ):
     """
     Gibt die Gesamtanzahl der Spiele basierend auf den aktuellen Filtern zurück.
     """
     query = db.query(Game)
-    query = apply_game_filters(query,filter_text, show_available_only, min_player_count, player_age, show_missing_ean_only, complexities)
+    query = apply_game_filters(
+        query,
+        filter_text,
+        show_available_only,
+        min_player_count,
+        player_age,
+        show_missing_ean_only,
+        complexities,
+    )
     total_count = query.count()
 
     return {"total_count": total_count}
 
 
-from datetime import datetime, timezone, timedelta
-
 @router.get("/game/{game_id}", response_model=GameResponseWithDetails)
-def read_game(game_id: int, db: Session = Depends(get_db), edit_tokens: Optional[list[str]] = Query(None)):
+def read_game(
+    game_id: int,
+    db: Session = Depends(get_db),
+    edit_tokens: Optional[list[str]] = Query(None),
+):
     # Spiel abrufen, mit den zugehörigen Tags, ähnlichen Spielen und PlayerSearches
-    game = db.query(Game).options(
-        joinedload(Game.tags),
-        joinedload(Game.similar_games),
-        joinedload(Game.player_searches)  # PlayerSearches direkt laden
-    ).filter(Game.id == game_id).first()
+    game = (
+        db.query(Game)
+        .options(
+            joinedload(Game.tags),
+            joinedload(Game.similar_games),
+            joinedload(Game.player_searches),  # PlayerSearches direkt laden
+        )
+        .filter(Game.id == game_id)
+        .first()
+    )
 
     if not game:
         create_error(status_code=404, error_code="NO_GAMES_AVAILABLE")
@@ -88,7 +142,8 @@ def read_game(game_id: int, db: Session = Depends(get_db), edit_tokens: Optional
 
     # Filtern der PlayerSearches: Nur heutige Gesuche mit passender game_id
     filtered_player_searches = [
-        search for search in game.player_searches 
+        search
+        for search in game.player_searches
         if search.game_id == game_id and today_start <= search.created_at < today_end
     ]
 
@@ -121,7 +176,7 @@ def read_game(game_id: int, db: Session = Depends(get_db), edit_tokens: Optional
                 created_at=search.created_at,
                 expires_at=search.expires_at,
                 can_edit=search.can_edit,
-                edit_token=search.edit_token if search.can_edit else None
+                edit_token=search.edit_token if search.can_edit else None,
             )
             for search in filtered_player_searches
         ],
@@ -150,22 +205,30 @@ def read_game(game_id: int, db: Session = Depends(get_db), edit_tokens: Optional
     )
 
 
-
-
 @router.get("/borrowed-games", response_model=GamesWithCountResponse)
 def read_borrowed_games(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_role("helper"))
+    db: Session = Depends(get_db), current_user: User = Depends(require_role("helper"))
 ):
-    query = db.query(Game).options(joinedload(Game.tags)).filter(Game.borrow_count > 0).order_by(asc(Game.name))
+    query = (
+        db.query(Game)
+        .options(joinedload(Game.tags))
+        .filter(Game.borrow_count > 0)
+        .order_by(asc(Game.name))
+    )
     total_games = query.count()
     games = query.all()
 
     return {"games": games, "total": total_games}
 
+
 @router.post("/by-ids", response_model=List[GameResponse])
 def read_games_by_ids(game_ids: List[int], db: Session = Depends(get_db)):
-    games = db.query(Game).options(joinedload(Game.tags)).filter(Game.id.in_(game_ids)).all()
+    games = (
+        db.query(Game)
+        .options(joinedload(Game.tags))
+        .filter(Game.id.in_(game_ids))
+        .all()
+    )
     if not games:
         create_error(status_code=404, error_code="NO_GAMES_AVAILABLE")
     return games
@@ -181,28 +244,23 @@ def read_game_by_ean(ean: str, db: Session = Depends(get_db)):
 
 @router.put("/game/borrow/{game_id}")
 def borrow_game(
-    game_id: int, 
-    db: Session = Depends(get_db), 
-    current_user: User = Depends(require_role("helper"))
+    game_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("helper")),
 ):
     # 1. Datensatz mit Row-Level-Lock laden – ohne joinedload!
-    game = (
-        db.query(Game)
-        .filter(Game.id == game_id)
-        .with_for_update()
-        .first()
-    )
+    game = db.query(Game).filter(Game.id == game_id).with_for_update().first()
     if game is None:
         create_error(status_code=404, error_code="GAME_NOT_FOUND")
-    
+
     if game.available <= 0:
         create_error(status_code=400, error_code="NO_COPIES_AVAILABLE")
-    
+
     game.available -= 1
     game.borrow_count += 1
     db.commit()
     db.refresh(game)
-    
+
     # 2. Nachladen der Beziehungen via selectinload (separate Abfrage)
     game = (
         db.query(Game)
@@ -210,37 +268,36 @@ def borrow_game(
         .filter(Game.id == game_id)
         .first()
     )
-    
+
     return {
         **game.__dict__,
         "tags": game.tags,
-        "similar_games": [sg.similar_game_id for sg in game.similar_games] if game.similar_games else []
+        "similar_games": (
+            [sg.similar_game_id for sg in game.similar_games]
+            if game.similar_games
+            else []
+        ),
     }
 
 
 @router.put("/game/return/{game_id}")
 def return_game(
-    game_id: int, 
-    db: Session = Depends(get_db), 
-    current_user: User = Depends(require_role("helper"))
+    game_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("helper")),
 ):
     # Row-Level-Lock setzen ohne joinedload
-    game = (
-        db.query(Game)
-        .filter(Game.id == game_id)
-        .with_for_update()
-        .first()
-    )
+    game = db.query(Game).filter(Game.id == game_id).with_for_update().first()
     if game is None:
         create_error(status_code=404, error_code="GAME_NOT_FOUND")
-    
+
     if game.available >= game.quantity:
         create_error(status_code=400, error_code="ALL_COPIES_AVAILABLE")
-    
+
     game.available += 1
     db.commit()
     db.refresh(game)
-    
+
     # Beziehungen separat nachladen
     game = (
         db.query(Game)
@@ -248,16 +305,25 @@ def return_game(
         .filter(Game.id == game_id)
         .first()
     )
-    
+
     return {
         **game.__dict__,
         "tags": game.tags,
-        "similar_games": [sg.similar_game_id for sg in game.similar_games] if game.similar_games else []
+        "similar_games": (
+            [sg.similar_game_id for sg in game.similar_games]
+            if game.similar_games
+            else []
+        ),
     }
 
 
 @router.put("/game/add_ean/{game_id}")
-def add_ean(game_id: int, request: AddEANRequest, db: Session = Depends(get_db), current_user: User = Depends(require_role("helper"))):
+def add_ean(
+    game_id: int,
+    request: AddEANRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("helper")),
+):
     game = db.query(Game).filter(Game.id == game_id).first()
     if game is None:
         create_error(status_code=404, error_code="GAME_NOT_FOUND")
@@ -271,7 +337,7 @@ def add_ean(game_id: int, request: AddEANRequest, db: Session = Depends(get_db),
                 "id": existing_game.id,
                 "name": existing_game.name,
                 "ean": existing_game.ean,
-                "thumbnail_url": existing_game.thumbnail_url
+                "thumbnail_url": existing_game.thumbnail_url,
             },
         )
     game.ean = request.ean
@@ -280,8 +346,13 @@ def add_ean(game_id: int, request: AddEANRequest, db: Session = Depends(get_db),
 
     return game
 
+
 @router.put("/game/remove_ean/{game_id}")
-def remove_ean(game_id: int, db: Session = Depends(get_db), current_user: User = Depends(require_role("admin"))):
+def remove_ean(
+    game_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("admin")),
+):
     game = db.query(Game).filter(Game.id == game_id).first()
     if game is None:
         create_error(status_code=404, error_code="GAME_NOT_FOUND")
@@ -292,30 +363,26 @@ def remove_ean(game_id: int, db: Session = Depends(get_db), current_user: User =
 
     return game
 
+
 @router.put("/game/borrow_by_ean/{game_ean}")
 def borrow_game_ean(
-    game_ean: str, 
-    db: Session = Depends(get_db), 
-    current_user: User = Depends(require_role("helper"))
+    game_ean: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("helper")),
 ):
     # Row-Level-Lock setzen via EAN (ohne joinedload)
-    game = (
-        db.query(Game)
-        .filter(Game.ean == game_ean)
-        .with_for_update()
-        .first()
-    )
+    game = db.query(Game).filter(Game.ean == game_ean).with_for_update().first()
     if game is None:
         create_error(status_code=404, error_code="GAME_NOT_FOUND")
-    
+
     if game.available <= 0:
         create_error(status_code=400, error_code="NO_COPIES_AVAILABLE")
-    
+
     game.available -= 1
     game.borrow_count += 1
     db.commit()
     db.refresh(game)
-    
+
     # Beziehungen separat nachladen
     game = (
         db.query(Game)
@@ -323,37 +390,36 @@ def borrow_game_ean(
         .filter(Game.ean == game_ean)
         .first()
     )
-    
+
     return {
         **game.__dict__,
         "tags": game.tags,
-        "similar_games": [sg.similar_game_id for sg in game.similar_games] if game.similar_games else []
+        "similar_games": (
+            [sg.similar_game_id for sg in game.similar_games]
+            if game.similar_games
+            else []
+        ),
     }
 
 
 @router.put("/game/return_by_ean/{game_ean}")
 def return_game_ean(
-    game_ean: str, 
-    db: Session = Depends(get_db), 
-    current_user: User = Depends(require_role("helper"))
+    game_ean: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("helper")),
 ):
     # Row-Level-Lock setzen via EAN (ohne joinedload)
-    game = (
-        db.query(Game)
-        .filter(Game.ean == game_ean)
-        .with_for_update()
-        .first()
-    )
+    game = db.query(Game).filter(Game.ean == game_ean).with_for_update().first()
     if game is None:
         create_error(status_code=404, error_code="GAME_NOT_FOUND")
-    
+
     if game.available >= game.quantity:
         create_error(status_code=400, error_code="ALL_COPIES_AVAILABLE")
-    
+
     game.available += 1
     db.commit()
     db.refresh(game)
-    
+
     # Beziehungen separat nachladen
     game = (
         db.query(Game)
@@ -361,9 +427,13 @@ def return_game_ean(
         .filter(Game.ean == game_ean)
         .first()
     )
-    
+
     return {
         **game.__dict__,
         "tags": game.tags,
-        "similar_games": [sg.similar_game_id for sg in game.similar_games] if game.similar_games else []
+        "similar_games": (
+            [sg.similar_game_id for sg in game.similar_games]
+            if game.similar_games
+            else []
+        ),
     }

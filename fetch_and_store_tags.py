@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 import requests
 from typing import List, Dict, Set
@@ -6,6 +7,10 @@ from sqlalchemy.orm import Session
 from database import SessionLocal
 from models import Game, Tag
 
+api_token = os.environ["BGG_API_TOKEN"]
+
+# Token als Authorization Header setzen
+headers = {"Authorization": f"Bearer {api_token}", "User-Agent": "SpielViel-App/1.0"}
 # ------------------------------------------------------------------------
 # ✅ Logger Setup
 # ------------------------------------------------------------------------
@@ -21,41 +26,54 @@ if not logger.handlers:
 # ✅ Hilfsfunktionen
 # ------------------------------------------------------------------------
 
+
 def get_all_tags(session: Session) -> Dict[str, Tag]:
     """Holt alle aktiven Tags als Dictionary: { "tagname": Tag-Objekt }"""
-    tags = session.query(Tag).filter(Tag.is_active == True).all()
+    tags = session.query(Tag).filter(Tag.is_active is True).all()
     return {tag.normalized_tag.lower(): tag for tag in tags}
 
-def fetch_tags_with_retry(bgg_id: int, retries: int = 3, delay: float = 0.5) -> List[str]:
+
+def fetch_tags_with_retry(
+    bgg_id: int, retries: int = 3, delay: float = 0.5
+) -> List[str]:
     """Holt Tags von BoardGameGeek mit Retry-Mechanismus."""
     url = f"https://boardgamegeek.com/api/tags?objectid={bgg_id}&objecttype=thing"
-    
+
     for attempt in range(retries):
         try:
-            response = requests.get(url, timeout=5)
+            response = requests.get(url, timeout=5, headers=headers)
             if response.status_code == 200:
                 tags = response.json().get("globaltags", [])
                 return [tag["rawtag"].lower().strip() for tag in tags]
         except requests.RequestException as e:
-            logger.warning(f"Fehler beim Abrufen der Tags für {bgg_id} (Versuch {attempt+1}/{retries}): {e}")
+            logger.warning(
+                f"Fehler beim Abrufen der Tags für {bgg_id} "
+                f"(Versuch {attempt + 1}/{retries}): {e}"
+            )
         time.sleep(delay)
 
-    logger.error(f"❌ Fehlgeschlagen: Keine Tags für BGG ID {bgg_id} nach {retries} Versuchen.")
+    logger.error(
+        f"❌ Fehlgeschlagen: Keine Tags für BGG ID {bgg_id} nach {retries} Versuchen."
+    )
     return []
+
 
 # ------------------------------------------------------------------------
 # ✅ Hauptfunktion mit `only_missing_tags` Flag
 # ------------------------------------------------------------------------
 
+
 def save_tags_to_db(only_missing_tags: bool = False) -> Dict[str, int]:
     """
     Aktualisiert die Tags für Spiele.
-    
+
     Args:
-        only_missing_tags (bool): Falls `True`, werden nur Spiele aktualisiert, die KEINE Tags haben.
-        
+        only_missing_tags (bool): Falls `True`, werden nur Spiele aktualisiert,
+            die KEINE Tags haben.
+
     Returns:
-        Dict mit Statistiken: {"total_games": 100, "games_updated": 20, "new_tags_assigned": 50}
+        Dict mit Statistiken: {"total_games": 100, "games_updated": 20,
+                              "new_tags_assigned": 50}
     """
     session = SessionLocal()
     changes = {"total_games": 0, "games_updated": 0, "new_tags_assigned": 0}
@@ -70,7 +88,9 @@ def save_tags_to_db(only_missing_tags: bool = False) -> Dict[str, int]:
         games_query = session.query(Game)
         if only_missing_tags:
             logger.info("🔎 Modus: Nur Spiele ohne Tags werden aktualisiert.")
-            games_query = games_query.filter(~Game.tags.any())  # Filter: Nur Spiele ohne Tags
+            games_query = games_query.filter(
+                ~Game.tags.any()
+            )  # Filter: Nur Spiele ohne Tags
 
         # Lade alle relevanten Spiele
         games = games_query.all()
@@ -97,7 +117,9 @@ def save_tags_to_db(only_missing_tags: bool = False) -> Dict[str, int]:
                     matched_tags.add(all_tags[raw_tag])
                 else:
                     for tag_entry in all_tags.values():
-                        synonyms = tag_entry.synonyms.split(",") if tag_entry.synonyms else []
+                        synonyms = (
+                            tag_entry.synonyms.split(",") if tag_entry.synonyms else []
+                        )
                         if raw_tag in [syn.lower().strip() for syn in synonyms]:
                             matched_tags.add(tag_entry)
                             break
@@ -114,10 +136,13 @@ def save_tags_to_db(only_missing_tags: bool = False) -> Dict[str, int]:
                 changes["games_updated"] += 1
                 changes["new_tags_assigned"] += len(new_tags)
 
-                logger.info(f"🔹 Tags aktualisiert für '{game.name}': {[t.normalized_tag for t in new_tags]}")
+                logger.info(
+                    f"🔹 Tags aktualisiert für '{game.name}': "
+                    f" {[t.normalized_tag for t in new_tags]}"
+                )
 
         session.commit()
-        logger.info(f"✅ Tags für alle Spiele aktualisiert.")
+        logger.info("✅ Tags für alle Spiele aktualisiert.")
 
     except Exception as e:
         logger.error(f"⚠️ Fehler beim Tag-Update: {e}")
@@ -127,30 +152,41 @@ def save_tags_to_db(only_missing_tags: bool = False) -> Dict[str, int]:
 
     return changes
 
+
 # ------------------------------------------------------------------------
 # ✅ Regeln für Tag-Zuordnung
 # ------------------------------------------------------------------------
+
 
 def apply_tag_rules(game: Game, matched_tags: Set[Tag]) -> Set[Tag]:
     """Wendet Regeln für spezielle Tags an (z. B. `Duel` nur für max 2 Spieler)."""
     filtered_tags = set(matched_tags)
 
     # Regel 1: `Duel` nur wenn max_players ≤ 2
-    if any(t.normalized_tag.lower() == "duel" for t in filtered_tags) and (game.max_players is None or game.max_players > 2):
+    if any(t.normalized_tag.lower() == "duel" for t in filtered_tags) and (
+        game.max_players is None or game.max_players > 2
+    ):
         logger.info(f"❌ Entferne 'Duel' von '{game.name}' (max_players > 2)")
         filtered_tags = {t for t in filtered_tags if t.normalized_tag.lower() != "duel"}
 
     # Regel 2: Konflikt zwischen `Co-op` und `Competitive`
     tag_names = {t.normalized_tag.lower() for t in filtered_tags}
     if "co-op" in tag_names and "competitive" in tag_names:
-        logger.info(f"⚠️ Konflikt: 'Co-op' und 'Competitive' bei '{game.name}'. Entferne 'Co-op'.")
-        filtered_tags = {t for t in filtered_tags if t.normalized_tag.lower() != "co-op"}
+        logger.info(
+            f"⚠️ Konflikt: 'Co-op' und 'Competitive' bei '{game.name}'. "
+            f"Entferne 'Co-op'."
+        )
+        filtered_tags = {
+            t for t in filtered_tags if t.normalized_tag.lower() != "co-op"
+        }
 
     return filtered_tags
+
 
 # ------------------------------------------------------------------------
 # ✅ Wrapper für Zeitmessung
 # ------------------------------------------------------------------------
+
 
 def update_tags_logic(only_missing_tags: bool = False) -> Dict[str, int]:
     """

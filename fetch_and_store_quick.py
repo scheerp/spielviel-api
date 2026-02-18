@@ -1,6 +1,7 @@
 import requests
 import time
 import html
+import os
 from bs4 import BeautifulSoup
 from typing import List, Dict
 from sqlalchemy.orm import Session
@@ -9,32 +10,41 @@ from models import Game, GameSimilarity
 from utils.filters import assign_complexity_label
 from fetch_and_store_private import parse_collection
 
+api_token = os.environ["BGG_API_TOKEN"]
+
+# Token als Authorization Header setzen
+headers = {"Authorization": f"Bearer {api_token}", "User-Agent": "SpielViel-App/1.0"}
+
 
 ##########################################
 # 1) Funktion: fetch_collection_quick
 ##########################################
 def fetch_collection_quick(
-    username: str,
-    retry_interval: int = 5,
-    max_retries: int = 5
+    username: str, retry_interval: int = 5, max_retries: int = 5
 ) -> str:
     """
-    Holt die **öffentliche** Sammlung eines BGG-Users (kein Login, keine privaten Infos).
+    Holt die **öffentliche** Sammlung eines BGG-Users (kein Login, keine privaten Infos)
     Gibt **nur** das Collection-XML als String zurück.
     """
-    collection_url = f"https://boardgamegeek.com/xmlapi2/collection?username={username}&stats=1"
-    
+    collection_url = (
+        f"https://boardgamegeek.com/xmlapi2/collection?username={username}&stats=1"
+    )
+
     session = requests.Session()
     collection_xml = None
 
     for attempt in range(max_retries):
-        response = session.get(collection_url)
+        response = session.get(collection_url, headers=headers)
         if response.status_code == 200 and "<message>" not in response.text:
             collection_xml = response.text
             print("✅ Öffentliche Sammlung erfolgreich abgerufen.")
             break
         else:
-            print(f"⏳ Sammlung nicht bereit. Neuer Versuch in {retry_interval} Sekunden (Versuch {attempt+1}/{max_retries})")
+            print(
+                f"⏳ Sammlung nicht bereit.\n"
+                f"Neuer Versuch in {retry_interval} Sekunden "
+                f"(Versuch {attempt+1}/{max_retries})"
+            )
             time.sleep(retry_interval)
     else:
         raise Exception("❌ Öffentliche Sammlung konnte nicht abgerufen werden.")
@@ -45,9 +55,12 @@ def fetch_collection_quick(
 ##########################################
 # 2) Funktion: fetch_game_details (mit HTML-Dekodierung)
 ##########################################
-def fetch_game_details(game_ids: List[int], max_retries=5, retry_interval=5) -> Dict[int, dict]:
+def fetch_game_details(
+    game_ids: List[int], max_retries=5, retry_interval=5
+) -> Dict[int, dict]:
     """
-    Holt Detaildaten zu den angegebenen Spiel-IDs (Beschreibung, Altersangabe, Komplexität usw.).
+    Holt Detaildaten zu den angegebenen Spiel-IDs
+    (Beschreibung, Altersangabe, Komplexität usw.).
     In Chunks von 20 IDs (Bulk).
     """
     if not game_ids:
@@ -55,23 +68,25 @@ def fetch_game_details(game_ids: List[int], max_retries=5, retry_interval=5) -> 
 
     details = {}
     base_url = "https://boardgamegeek.com/xmlapi2/thing"
-    
-    chunks = [game_ids[i:i + 20] for i in range(0, len(game_ids), 20)]
+
+    chunks = [game_ids[i : i + 20] for i in range(0, len(game_ids), 20)]
 
     for chunk in chunks:
         params = {"id": ",".join(map(str, chunk)), "stats": "1"}
         fetched = False
-        
+
         for _ in range(max_retries):
             try:
-                response = requests.get(base_url, params=params)
+                response = requests.get(base_url, params=params, headers=headers)
                 if response.status_code == 200 and "<message>" not in response.text:
                     soup = BeautifulSoup(response.content, "lxml-xml")
                     for item in soup.find_all("item"):
                         bgg_id = int(item["id"])
 
                         desc_element = item.find("description")
-                        unescaped_desc = html.unescape(desc_element.text) if desc_element else None  # HTML-Dekodierung
+                        unescaped_desc = (
+                            html.unescape(desc_element.text) if desc_element else None
+                        )  # HTML-Dekodierung
 
                         minage = item.find("minage")
                         averageweight = item.find("averageweight")
@@ -79,7 +94,9 @@ def fetch_game_details(game_ids: List[int], max_retries=5, retry_interval=5) -> 
                         data = {
                             "description": unescaped_desc,
                             "player_age": int(minage["value"]) if minage else None,
-                            "complexity": float(averageweight["value"]) if averageweight else None
+                            "complexity": (
+                                float(averageweight["value"]) if averageweight else None
+                            ),
                         }
                         details[bgg_id] = data
 
@@ -122,10 +139,10 @@ def fetch_and_store_quick(username: str, fastMode=False):
     try:
         # 1. Collection-XML holen (ohne Details)
         collection_xml = fetch_collection_quick(username)
-        
+
         # 2. Collection parsen, um eine Spiele-Liste zu erhalten
         games = parse_collection(collection_xml)
-        
+
         # 3. Wenn fastMode=True: nur für neue Spiele Detaildaten abrufen
         if fastMode:
             db: Session = SessionLocal()
@@ -137,7 +154,10 @@ def fetch_and_store_quick(username: str, fastMode=False):
 
             new_ids = [g["bgg_id"] for g in games if g["bgg_id"] not in existing_ids]
             if new_ids:
-                print(f"⚡ fastMode=True → Detail-Daten nur für {len(new_ids)} neue Spiele holen...")
+                print(
+                    f"⚡ fastMode=True → Detail-Daten nur für "
+                    f"{len(new_ids)} neue Spiele holen..."
+                )
                 details = fetch_game_details(new_ids)
 
                 for g in games:
@@ -145,9 +165,16 @@ def fetch_and_store_quick(username: str, fastMode=False):
                     if bgg_id in details:
                         g.update(details[bgg_id])
                         assign_complexity_label(g)
-                        g["description"] = html.unescape(g["description"]) if g.get("description") else None  # HTML-Dekodierung
+                        g["description"] = (
+                            html.unescape(g["description"])
+                            if g.get("description")
+                            else None
+                        )  # HTML-Dekodierung
             else:
-                print("📎 Keine neuen Spiele, daher keine zusätzlichen Detail-Requests nötig.")
+                print(
+                    "📎 Keine neuen Spiele, daher keine zusätzlichen "
+                    "Detail-Requests nötig."
+                )
         else:
             print("🐢 fastMode=False → Keine Detail-Requests, nur Basis-Daten.")
 
@@ -184,21 +211,26 @@ def add_games_to_db_quick(games):
 
                 db.add(new_game)
                 added_count += 1
-                print(f"➕ Neues Spiel: {game_data['name']} (BGG {game_data['bgg_id']})")
+                print(
+                    f"➕ Neues Spiel: {game_data['name']} (BGG {game_data['bgg_id']})"
+                )
 
         # 2️⃣ **Spiele entfernen, die nicht mehr in der neuen Sammlung sind**
         for existing_game in existing_games:
             if existing_game.bgg_id not in new_games_by_bgg_id:
                 # 1️⃣ Erst alle GameSimilarity-Einträge löschen
                 db.query(GameSimilarity).filter(
-                    (GameSimilarity.game_id == existing_game.id) |
-                    (GameSimilarity.similar_game_id == existing_game.id)
+                    (GameSimilarity.game_id == existing_game.id)
+                    | (GameSimilarity.similar_game_id == existing_game.id)
                 ).delete(synchronize_session=False)
 
                 # 2️⃣ Dann das Spiel löschen
                 db.delete(existing_game)
                 deleted_count += 1
-                print(f"🗑️ Spiel gelöscht: {existing_game.name} (BGG {existing_game.bgg_id})")
+                print(
+                    f"🗑️ Spiel gelöscht: {existing_game.name} "
+                    f"(BGG {existing_game.bgg_id})"
+                )
 
         # 3️⃣ **Datenbank-Commit nach allen Änderungen**
         db.commit()

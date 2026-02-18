@@ -22,9 +22,13 @@ ROLE_PERMISSIONS = {
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+
 def require_role(required_role: str):
     """Factory-Funktion zur Generierung von Rollen-basierten Dependencies"""
-    def role_checker(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+
+    def role_checker(
+        token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)
+    ):
         user = get_current_user(token, db)
         if user.role not in ROLE_PERMISSIONS:
             create_error(status_code=403, error_code="NOT_AUTHORIZED")
@@ -40,25 +44,33 @@ def require_role(required_role: str):
 def hash_password(password: str) -> str:
     return pwd_context.hash(password)
 
+
 # Passwort-Überprüfungsfunktionen
 def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
 
+
 def get_password_hash(password):
     return pwd_context.hash(password)
+
 
 # JWT-Erstellung
 def create_access_token(data: dict, expires_delta: timedelta = None):
     to_encode = data.copy()
     if "role" not in to_encode:
         raise ValueError("Role must be included in the token data")
-    expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    expire = datetime.now(timezone.utc) + (
+        expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    )
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
+
 # Funktion zur Authentifizierung
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+def get_current_user(
+    token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)
+):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -79,4 +91,3 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
 
     user.role = role
     return user
-

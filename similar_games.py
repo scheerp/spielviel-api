@@ -1,11 +1,13 @@
 from models import Game, GameSimilarity
-from sqlalchemy.orm import Session
 from database import SessionLocal
 from random import shuffle
 import logging
 from typing import Dict, List, Tuple
 
-def get_top_similar_game_ids(similar_games: List[GameSimilarity], limit: int = 6) -> List[int]:
+
+def get_top_similar_game_ids(
+    similar_games: List[GameSimilarity], limit: int = 6
+) -> List[int]:
     """
     Liefert die IDs der `limit` ähnlichsten Spiele basierend auf similarity_score,
     aber gibt sie in zufälliger Reihenfolge zurück.
@@ -18,7 +20,9 @@ def get_top_similar_game_ids(similar_games: List[GameSimilarity], limit: int = 6
         List[int]: Liste der IDs der ähnlichsten Spiele (randomisiert).
     """
     # 1) Sortiere nach similarity_score DESC
-    sorted_games = sorted(similar_games, key=lambda sg: sg.similarity_score, reverse=True)
+    sorted_games = sorted(
+        similar_games, key=lambda sg: sg.similarity_score, reverse=True
+    )
 
     # 2) Nimm die Top-Einträge (limit)
     top_games = sorted_games[:limit]
@@ -29,7 +33,7 @@ def get_top_similar_game_ids(similar_games: List[GameSimilarity], limit: int = 6
     # 4) Extrahiere die IDs und gib sie zurück
     return [sg.similar_game_id for sg in top_games]
 
-    
+
 # ------------------------------------------------------------------------------
 # Logger einrichten (alternativ in main.py / __init__.py konfigurierbar)
 # ------------------------------------------------------------------------------
@@ -42,12 +46,12 @@ if not logger.handlers:
     console_handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
     logger.addHandler(console_handler)
 
+
 # ------------------------------------------------------------------------------
 # Hilfsfunktion: Ähnlichkeitsberechnung (Tags + Complexity)
 # ------------------------------------------------------------------------------
 def calculate_similarity(
-    game_a_data: Dict,
-    game_b_data: Dict
+    game_a_data: Dict, game_b_data: Dict
 ) -> Tuple[float, int, float]:
     """
     Berechnet einen Similarity-Score zwischen zwei Spielen.
@@ -79,6 +83,7 @@ def calculate_similarity(
     similarity_score = shared_tags_count + (tag_priority_sum * 0.1) + complexity_bonus
 
     return similarity_score, shared_tags_count, tag_priority_sum
+
 
 # ------------------------------------------------------------------------------
 # Hauptfunktion: Update Similarities für alle Spiele (immer alles löschen + neu)
@@ -118,7 +123,8 @@ def update_similar_games(max_similar_games: int = 10) -> int:
             }
 
         # Sammelstruktur für Similarities:
-        # similarities_map[game_id] = [(other_id, score, shared_tags_count, tag_priority_sum), ...]
+        # similarities_map[game_id] = [(other_id, score, shared_tags_count,
+        # tag_priority_sum), ...]
         similarities_map = {g.id: [] for g in all_games}
 
         logger.info("3) Berechne Similarities in Python (O(n^2)) ...")
@@ -131,8 +137,7 @@ def update_similar_games(max_similar_games: int = 10) -> int:
 
                 # Ähnlichkeit berechnen
                 score, shared_tags_count, tag_priority_sum = calculate_similarity(
-                    game_data[game_id],
-                    game_data[other_game_id]
+                    game_data[game_id], game_data[other_game_id]
                 )
 
                 # Optional: Speichere nur, wenn überhaupt gemeinsame Tags
@@ -160,13 +165,13 @@ def update_similar_games(max_similar_games: int = 10) -> int:
             top_entries = sim_list[:max_similar_games]
 
             # Neue Datensätze in DB anlegen
-            for (other_id, score, shared_count, tag_sum) in top_entries:
+            for other_id, score, shared_count, tag_sum in top_entries:
                 new_sim = GameSimilarity(
                     game_id=g_id,
                     similar_game_id=other_id,
                     similarity_score=score,
                     shared_tags_count=shared_count,
-                    tag_priority_sum=tag_sum
+                    tag_priority_sum=tag_sum,
                 )
                 session.add(new_sim)
                 created_count += 1

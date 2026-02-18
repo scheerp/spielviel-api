@@ -3,29 +3,41 @@ from sqlalchemy.orm import Session
 import uuid
 from datetime import datetime, timedelta, timezone
 from collections import defaultdict
-from models import PlayerSearch, Game, PlayerSearchCreate, PlayerSearchEdit, PlayerSearchCreateResponse
+from models import (
+    PlayerSearch,
+    Game,
+    PlayerSearchCreate,
+    PlayerSearchEdit,
+    PlayerSearchCreateResponse,
+)
 from database import get_db
 from utils.errors import create_error
 from fastapi import Query
 
 router = APIRouter()
 
+
 @router.get("/", response_model=list[dict])
 def get_all_player_searches(
     db: Session = Depends(get_db),
-    edit_tokens: list[str] = Query(None)  # Optionales Array von edit_tokens als Query-Parameter
+    edit_tokens: list[str] = Query(
+        None
+    ),  # Optionales Array von edit_tokens als Query-Parameter
 ):
     """Gibt alle Mitspieler-Gesuche vom aktuellen Tag zurück, gruppiert nach Spiel."""
-    
+
     now = datetime.now(timezone.utc)
     today_start = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
     today_end = today_start + timedelta(days=1)
 
     # Alle heutigen PlayerSearch-Objekte abrufen
-    searches = db.query(PlayerSearch).filter(
-        PlayerSearch.created_at >= today_start,
-        PlayerSearch.created_at < today_end
-    ).all()
+    searches = (
+        db.query(PlayerSearch)
+        .filter(
+            PlayerSearch.created_at >= today_start, PlayerSearch.created_at < today_end
+        )
+        .all()
+    )
 
     # Alle benötigten Spiele auf einmal abrufen (statt in einer Schleife)
     game_ids = {search.game_id for search in searches}
@@ -38,7 +50,7 @@ def get_all_player_searches(
     for search in searches:
         game = game_dict.get(search.game_id)
         if not game:
-            continue  # Falls kein passendes Spiel gefunden wird (sollte nicht passieren)
+            continue  # Falls kein passendes Spiel gefunden wird
 
         # Falls das Spiel noch nicht in den Ergebnissen ist, hinzufügen
         if grouped_results[search.game_id]["game"] is None:
@@ -60,27 +72,28 @@ def get_all_player_searches(
         can_edit = search.edit_token in edit_tokens if edit_tokens else False
 
         # Gesuch hinzufügen
-        grouped_results[search.game_id]["player_searches"].append({
-            "id": search.id,
-            "name": search.name,
-            "current_players": search.current_players,
-            "players_needed": search.players_needed,
-            "location": search.location,
-            "details": search.details,
-            "created_at": search.created_at,
-            "expires_at": search.expires_at,
-            "can_edit": can_edit,
-            "edit_token": search.edit_token if can_edit else None,
-        })
+        grouped_results[search.game_id]["player_searches"].append(
+            {
+                "id": search.id,
+                "name": search.name,
+                "current_players": search.current_players,
+                "players_needed": search.players_needed,
+                "location": search.location,
+                "details": search.details,
+                "created_at": search.created_at,
+                "expires_at": search.expires_at,
+                "can_edit": can_edit,
+                "edit_token": search.edit_token if can_edit else None,
+            }
+        )
 
     return list(grouped_results.values())
-
 
 
 @router.post("/create", response_model=PlayerSearchCreateResponse)
 def create_player_search(request: PlayerSearchCreate, db: Session = Depends(get_db)):
     """Erstellt ein neues Mitspieler-Gesuch."""
-    
+
     game = db.query(Game).filter(Game.id == request.game_id).first()
     if not game:
         create_error(status_code=404, error_code="GAME_NOT_FOUND")
@@ -88,7 +101,6 @@ def create_player_search(request: PlayerSearchCreate, db: Session = Depends(get_
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)
     edit_token = str(uuid.uuid4())
     details = request.details if request.details is not None else None
-
 
     new_search = PlayerSearch(
         game_id=request.game_id,
@@ -98,27 +110,24 @@ def create_player_search(request: PlayerSearchCreate, db: Session = Depends(get_
         location=request.location,
         details=details,
         expires_at=expires_at,
-        edit_token=edit_token
+        edit_token=edit_token,
     )
 
     db.add(new_search)
     db.commit()
     db.refresh(new_search)
 
-    return {
-        **new_search.__dict__,
-        "edit_token": edit_token
-    }
+    return {**new_search.__dict__, "edit_token": edit_token}
 
 
 @router.patch("/update/{search_id}")
 def update_player_search(
     search_id: int,
-    request: PlayerSearchEdit, 
+    request: PlayerSearchEdit,
     db: Session = Depends(get_db),
 ):
     """Aktualisiert ein Mitspieler-Gesuch (nur mit Token)."""
-    
+
     search = db.query(PlayerSearch).filter(PlayerSearch.id == search_id).first()
     if not search:
         create_error(status_code=404, error_code="PAYER_SEARCH_NOT_FOUND")
@@ -140,9 +149,11 @@ def update_player_search(
 
 
 @router.delete("/{search_id}")
-def delete_player_search(search_id: int, db: Session = Depends(get_db), edit_token: str = Query(...)):
+def delete_player_search(
+    search_id: int, db: Session = Depends(get_db), edit_token: str = Query(...)
+):
     """Löscht ein Mitspieler-Gesuch (nur mit Token)."""
-    
+
     search = db.query(PlayerSearch).filter(PlayerSearch.id == search_id).first()
     if not search:
         create_error(status_code=404, error_code="PAYER_SEARCH_NOT_FOUND")

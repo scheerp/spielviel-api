@@ -1,9 +1,20 @@
-from sqlalchemy import Table, Column, Integer, String, Boolean, Float, ForeignKey, DateTime, func
+from sqlalchemy import (
+    Table,
+    Column,
+    Integer,
+    String,
+    Boolean,
+    Float,
+    ForeignKey,
+    DateTime,
+    func,
+)
 from database import Base
 from sqlalchemy.orm import relationship
 from pydantic import BaseModel, ConfigDict
 from typing import List, Optional
-from datetime import  datetime, timezone
+from datetime import datetime, timezone
+
 
 class PlayerSearchCreate(BaseModel):
     name: str
@@ -13,6 +24,7 @@ class PlayerSearchCreate(BaseModel):
     location: str
     details: Optional[str] = None
 
+
 class PlayerSearchEdit(BaseModel):
     name: str
     current_players: int
@@ -20,6 +32,7 @@ class PlayerSearchEdit(BaseModel):
     location: str
     details: Optional[str] = None
     edit_token: str
+
 
 class PlayerSearchResponse(BaseModel):
     id: int
@@ -45,6 +58,7 @@ class PlayerSearchResponse(BaseModel):
         """Berechnet, ob das Gesuch noch aktiv ist."""
         return self.expires_at > datetime.now(timezone.utc)
 
+
 class PlayerSearchCreateResponse(BaseModel):
     id: int
     game_id: int
@@ -61,22 +75,30 @@ class PlayerSearchCreateResponse(BaseModel):
 game_tags = Table(
     "game_tags",
     Base.metadata,
-    Column("game_id", Integer, ForeignKey("games.id", ondelete="CASCADE"), primary_key=True),
-    Column("tag_id", Integer, ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True),
+    Column(
+        "game_id", Integer, ForeignKey("games.id", ondelete="CASCADE"), primary_key=True
+    ),
+    Column(
+        "tag_id", Integer, ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True
+    ),
 )
 
 
 class UserGameKnowledge(Base):
     __tablename__ = "user_game_knowledge"
 
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
-    game_id = Column(Integer, ForeignKey("games.id", ondelete="CASCADE"), primary_key=True)
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    game_id = Column(
+        Integer, ForeignKey("games.id", ondelete="CASCADE"), primary_key=True
+    )
     familiarity = Column(Integer, nullable=False)
 
     user = relationship("User", back_populates="game_knowledge")
     game = relationship("Game", back_populates="user_knowledge")
 
-    
+
 class ExplainersBasic(BaseModel):
     id: int
     username: str
@@ -84,13 +106,14 @@ class ExplainersBasic(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+
 class ExplainerGroup(BaseModel):
     familiarity: int
     users: List[ExplainersBasic]
 
     model_config = ConfigDict(from_attributes=True)
 
-    
+
 class GameExplainersResponse(BaseModel):
     my_familiarity: Optional[int]
     explainers: List[ExplainerGroup]
@@ -102,6 +125,7 @@ class UserGameKnowledgeRequest(BaseModel):
     game_id: int
     familiarity: int
 
+
 class UserGameKnowledgeResponse(BaseModel):
     user_id: int
     game_id: int
@@ -109,14 +133,17 @@ class UserGameKnowledgeResponse(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+
 class RegisterRequest(BaseModel):
     username: str
     email: str
     password: str
     invite_code: str
 
+
 class AddEANRequest(BaseModel):
     ean: str
+
 
 class TagResponse(BaseModel):
     id: int
@@ -127,6 +154,7 @@ class TagResponse(BaseModel):
     class Config:
         from_attributes = True
 
+
 class SimilarGameResponse(BaseModel):
     similar_game_id: int
     similarity_score: float
@@ -135,6 +163,7 @@ class SimilarGameResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
 
 class GameResponseWithDetails(BaseModel):
     id: int
@@ -170,6 +199,7 @@ class GameResponseWithDetails(BaseModel):
 
     class Config:
         from_attributes = True
+
 
 class GameResponse(BaseModel):
     id: int
@@ -209,14 +239,20 @@ class GameSimilarity(Base):
     __tablename__ = "game_similarities"
 
     id = Column(Integer, primary_key=True, index=True)
-    game_id = Column(Integer, ForeignKey("games.id", ondelete="CASCADE"), nullable=False, index=True)
-    similar_game_id = Column(Integer, ForeignKey("games.id", ondelete="CASCADE"), nullable=False, index=True)
+    game_id = Column(
+        Integer, ForeignKey("games.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    similar_game_id = Column(
+        Integer, ForeignKey("games.id", ondelete="CASCADE"), nullable=False, index=True
+    )
     similarity_score = Column(Float, nullable=False)
     shared_tags_count = Column(Integer, nullable=False)
     tag_priority_sum = Column(Float, nullable=True)
 
     game = relationship("Game", foreign_keys=[game_id], backref="similarities_from")
-    similar_game = relationship("Game", foreign_keys=[similar_game_id], backref="similarities_to")
+    similar_game = relationship(
+        "Game", foreign_keys=[similar_game_id], backref="similarities_to"
+    )
 
 
 class Game(Base):
@@ -250,18 +286,25 @@ class Game(Base):
     min_recommended_playercount = Column(Integer, nullable=True)
     max_recommended_playercount = Column(Integer, nullable=True)
 
-    user_knowledge = relationship("UserGameKnowledge", back_populates="game", cascade="all, delete-orphan")
-    tags = relationship("Tag", secondary=game_tags, back_populates="games", cascade="all, delete")
-    player_searches = relationship("PlayerSearch", back_populates="game", cascade="all, delete-orphan")
+    user_knowledge = relationship(
+        "UserGameKnowledge", back_populates="game", cascade="all, delete-orphan"
+    )
+    tags = relationship(
+        "Tag", secondary=game_tags, back_populates="games", cascade="all, delete"
+    )
+    player_searches = relationship(
+        "PlayerSearch", back_populates="game", cascade="all, delete-orphan"
+    )
     similar_games = relationship(
         "GameSimilarity",
         primaryjoin="Game.id == GameSimilarity.game_id",
         overlaps="game,similarities_from",
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
     )
 
+
 class User(Base):
-    __tablename__ = 'users'
+    __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     username = Column(String, unique=True, index=True, nullable=False)
@@ -293,7 +336,9 @@ class PlayerSearch(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
-    game_id = Column(Integer, ForeignKey("games.id", ondelete="CASCADE"), nullable=False)
+    game_id = Column(
+        Integer, ForeignKey("games.id", ondelete="CASCADE"), nullable=False
+    )
     current_players = Column(Integer, nullable=False)
     players_needed = Column(Integer, nullable=False)
     location = Column(String, nullable=False)
@@ -303,6 +348,7 @@ class PlayerSearch(Base):
     edit_token = Column(String, unique=True, nullable=False)
 
     game = relationship("Game", back_populates="player_searches")
+
 
 class ChangePasswordRequest(BaseModel):
     current_password: str

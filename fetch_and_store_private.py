@@ -5,16 +5,7 @@ from collections import defaultdict
 from sqlalchemy.orm import Session
 from database import SessionLocal
 from models import Game
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.chrome import ChromeDriverManager
 from utils.filters import assign_complexity_label
-import chromedriver_autoinstaller
 import os
 import json
 import html
@@ -26,100 +17,18 @@ api_token = os.environ["BGG_API_TOKEN"]
 headers = {"Authorization": f"Bearer {api_token}", "User-Agent": "SpielViel-App/1.0"}
 
 
-def login_bgg(username, password):
+def fetch_collection(
+    username: str, cookies: dict = None, retry_interval=5, max_retries=10
+):
     """
-    Führt den Login bei BoardGameGeek durch und gibt eine aktive Session zurück.
-    """
-    login_url = "https://boardgamegeek.com/login"
-
-    chromedriver_autoinstaller.install()
-
-    # Set up Selenium WebDriver
-    chrome_options = Options()
-    chrome_options.add_argument("--headless")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--remote-debugging-port=9222")
-
-    print("Chrome Binary Path:", os.getenv("CHROME_BINARY_PATH"))
-    chrome_binary_path = os.getenv("CHROME_BINARY_PATH", "/usr/bin/google-chrome")
-    if not os.path.exists(chrome_binary_path):
-        raise FileNotFoundError(f"Chrome binary not found at {chrome_binary_path}")
-    chrome_options.binary_location = chrome_binary_path
-
-    driver = webdriver.Chrome(
-        service=Service(ChromeDriverManager().install()), options=chrome_options
-    )
-
-    # Schritt 1: Login-Seite holen
-    try:
-        driver.get(login_url)
-    except Exception as e:
-        print(f"Fehler beim Laden der Seite: {e}")
-        driver.quit()
-
-    print("🔄 Login-Seite geladen")
-
-    # Schritt 2: Cookie-Consent-Banner schließen
-    wait = WebDriverWait(driver, 10)
-    try:
-        consent_button = wait.until(
-            EC.element_to_be_clickable((By.CLASS_NAME, "fc-cta-do-not-consent"))
-        )
-        consent_button.click()
-        print("🔄 Cookie-Consent-Banner geschlossen")
-    except Exception as e:
-        print(f"⚠️ Kein Cookie-Consent-Banner gefunden oder Fehler beim Schließen: {e}")
-
-    # Schritt 3: Warte, bis die Login-Felder sichtbar und interaktiv sind
-    try:
-        username_field = wait.until(
-            EC.element_to_be_clickable((By.ID, "inputUsername"))
-        )
-        password_field = wait.until(
-            EC.element_to_be_clickable((By.ID, "inputPassword"))
-        )
-        print("🔄 Login-Felder gefunden und interaktiv")
-    except Exception as e:
-        print(f"❌ Fehler beim Finden der Login-Felder: {e}")
-        driver.quit()
-        return None
-
-    # Schritt 4: Login-Daten eingeben
-    try:
-        username_field.send_keys(username)
-        password_field.send_keys(password)
-        password_field.send_keys(Keys.RETURN)
-        print("🔄 Login-Daten eingegeben")
-    except Exception as e:
-        print(f"❌ Fehler beim Eingeben der Login-Daten: {e}")
-        driver.quit()
-        return None
-
-    time.sleep(1)  # Warte, bis der Login-Prozess abgeschlossen ist
-
-    # Schritt 5: Cookies erfassen
-    cookies = driver.get_cookies()
-    driver.quit()
-
-    # Cookies in ein Dictionary umwandeln
-    return {cookie["name"]: cookie["value"] for cookie in cookies}
-
-
-def fetch_collection(username: str, cookies: dict, retry_interval=5, max_retries=10):
-    """
-    Holt die XML-Daten der Sammlung eines eingeloggten Nutzers unter Verwendung
-    eines API-Tokens.
+    Holt die XML-Daten der Sammlung eines Nutzers unter Verwendung des API-Tokens.
+    Cookies werden nicht mehr benötigt, Token reicht.
     """
     collection_url = (
         f"https://boardgamegeek.com/xmlapi2/collection?"
         f"username={username}&stats=1&showprivate=1"
     )
     session = requests.Session()
-
-    # Cookies zur Session hinzufügen
-    for name, value in cookies.items():
-        session.cookies.set(name, value)
 
     for attempt in range(max_retries):
         response = session.get(collection_url, headers=headers)
@@ -483,15 +392,9 @@ def add_games_to_db(games):
         db.close()
 
 
-def fetch_and_store_private(username, password):
-    print("🔒 Logging in to BoardGameGeek...")
-    cookies = login_bgg(username, password)
-    if not cookies:
-        print("❌ Login fehlgeschlagen. Abbruch.")
-        return
-
+def fetch_and_store_private(username, password=None):
     print("📦 Fetching collection data...")
-    collection_xml = fetch_collection(username, cookies)
+    collection_xml = fetch_collection(username)
 
     print("📊 Parsing collection data...")
     games = parse_collection(collection_xml)

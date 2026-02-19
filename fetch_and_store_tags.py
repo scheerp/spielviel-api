@@ -1,5 +1,4 @@
 import logging
-import os
 import time
 import requests
 from typing import List, Dict, Set
@@ -7,10 +6,6 @@ from sqlalchemy.orm import Session
 from database import SessionLocal
 from models import Game, Tag
 
-api_token = os.environ["BGG_API_TOKEN"]
-
-# Token als Authorization Header setzen
-headers = {"Authorization": f"Bearer {api_token}", "User-Agent": "SpielViel-App/1.0"}
 # ------------------------------------------------------------------------
 # ✅ Logger Setup
 # ------------------------------------------------------------------------
@@ -29,7 +24,7 @@ if not logger.handlers:
 
 def get_all_tags(session: Session) -> Dict[str, Tag]:
     """Holt alle aktiven Tags als Dictionary: { "tagname": Tag-Objekt }"""
-    tags = session.query(Tag).filter(Tag.is_active is True).all()
+    tags = session.query(Tag).filter(Tag.is_active.is_(True)).all()
     return {tag.normalized_tag.lower(): tag for tag in tags}
 
 
@@ -41,7 +36,7 @@ def fetch_tags_with_retry(
 
     for attempt in range(retries):
         try:
-            response = requests.get(url, timeout=5, headers=headers)
+            response = requests.get(url, timeout=5)
             if response.status_code == 200:
                 tags = response.json().get("globaltags", [])
                 return [tag["rawtag"].lower().strip() for tag in tags]
@@ -83,6 +78,8 @@ def save_tags_to_db(only_missing_tags: bool = False) -> Dict[str, int]:
 
         # Lade alle aktiven Tags einmalig
         all_tags = get_all_tags(session)
+        logger.info(f"📌 Anzahl geladener Tags aus DB: {len(all_tags)}")
+        logger.info(f"📌 Tags: {list(all_tags.keys())[:10]}")  # zeige mal die ersten 10
 
         # Spiele-Query vorbereiten
         games_query = session.query(Game)

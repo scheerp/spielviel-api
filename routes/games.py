@@ -11,6 +11,8 @@ from models import (
     UserGameKnowledge,
     AddEANRequest,
     PlayerSearchResponse,
+    Event,
+    GameBorrow,
 )
 from utils.filters import apply_game_filters
 from typing import List, Optional
@@ -21,6 +23,37 @@ from datetime import datetime, timezone, timedelta
 
 
 router = APIRouter()
+
+
+def get_current_event(db: Session) -> Event:
+    """Gibt das Event des aktuellen Jahres zurück."""
+    now = datetime.now(timezone.utc)
+    current_year = now.year
+
+    event = db.query(Event).filter(Event.year == current_year).first()
+    if not event:
+        raise ValueError(f"Kein Event für {current_year} gefunden in der DB!")
+
+    return event
+
+
+def is_event_active(event: Event) -> bool:
+    """Prüft, ob das Event gerade stattfindet."""
+    now = datetime.now(timezone.utc)
+
+    # Falls das Event-naive Datetimes hat, als UTC interpretieren
+    start = (
+        event.start_date.replace(tzinfo=timezone.utc)
+        if event.start_date.tzinfo is None
+        else event.start_date
+    )
+    end = (
+        event.end_date.replace(tzinfo=timezone.utc)
+        if event.end_date.tzinfo is None
+        else event.end_date
+    )
+
+    return start <= now <= end
 
 
 @router.get("/", response_model=GamesWithCountResponse)
@@ -209,16 +242,18 @@ def read_game(
 def read_borrowed_games(
     db: Session = Depends(get_db), current_user: User = Depends(require_role("helper"))
 ):
-    query = (
+    event = get_current_event(db)
+    borrowed = (
         db.query(Game)
+        .join(GameBorrow, Game.id == GameBorrow.game_id)
+        .filter(GameBorrow.event_id == event.id, GameBorrow.count > 0)
         .options(joinedload(Game.tags))
-        .filter(Game.borrow_count > 0)
         .order_by(asc(Game.name))
+        .all()
     )
-    total_games = query.count()
-    games = query.all()
 
-    return {"games": games, "total": total_games}
+    total_games = len(borrowed)
+    return {"games": borrowed, "total": total_games}
 
 
 @router.post("/by-ids", response_model=List[GameResponse])
@@ -247,6 +282,9 @@ def borrow_game(
     game_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("helper")),
+    force_event: bool = Query(
+        False, description="Borrowings auch außerhalb des Events zählen"
+    ),
 ):
     # 1. Datensatz mit Row-Level-Lock laden – ohne joinedload!
     game = db.query(Game).filter(Game.id == game_id).with_for_update().first()
@@ -256,12 +294,33 @@ def borrow_game(
     if game.available <= 0:
         create_error(status_code=400, error_code="NO_COPIES_AVAILABLE")
 
+    # 1. Verfügbarkeit verringern
     game.available -= 1
-    game.borrow_count += 1
+
+    # 2. Event-spezifisch Borrowings erhöhen
+    event = get_current_event(db)
+    borrow = db.query(GameBorrow).filter_by(game_id=game.id, event_id=event.id).first()
+    event = get_current_event(db)
+
+    if is_event_active(event) or force_event:
+        borrow = (
+            db.query(GameBorrow).filter_by(game_id=game.id, event_id=event.id).first()
+        )
+        if borrow:
+            borrow.count += 1
+        else:
+            borrow = GameBorrow(game_id=game.id, event_id=event.id, count=1)
+            db.add(borrow)
+    else:
+        # Event nicht aktiv → borrow_count fürs Event nicht ändern
+        borrow = (
+            db.query(GameBorrow).filter_by(game_id=game.id, event_id=event.id).first()
+        )
+
     db.commit()
     db.refresh(game)
 
-    # 2. Nachladen der Beziehungen via selectinload (separate Abfrage)
+    # 3. Beziehungen separat nachladen
     game = (
         db.query(Game)
         .options(selectinload(Game.similar_games), selectinload(Game.tags))
@@ -277,6 +336,7 @@ def borrow_game(
             if game.similar_games
             else []
         ),
+        "borrow_count": borrow.count,
     }
 
 
@@ -306,6 +366,10 @@ def return_game(
         .first()
     )
 
+    # Borrow-count für Event abrufen (nicht ändern)
+    event = get_current_event(db)
+    borrow = db.query(GameBorrow).filter_by(game_id=game.id, event_id=event.id).first()
+
     return {
         **game.__dict__,
         "tags": game.tags,
@@ -314,6 +378,7 @@ def return_game(
             if game.similar_games
             else []
         ),
+        "borrow_count": borrow.count if borrow else 0,
     }
 
 
@@ -369,8 +434,11 @@ def borrow_game_ean(
     game_ean: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("helper")),
+    force_event: bool = Query(
+        False, description="Borrowings auch außerhalb des Events zählen"
+    ),
 ):
-    # Row-Level-Lock setzen via EAN (ohne joinedload)
+    # 1️⃣ Row-Level-Lock auf das Game via EAN
     game = db.query(Game).filter(Game.ean == game_ean).with_for_update().first()
     if game is None:
         create_error(status_code=404, error_code="GAME_NOT_FOUND")
@@ -378,12 +446,34 @@ def borrow_game_ean(
     if game.available <= 0:
         create_error(status_code=400, error_code="NO_COPIES_AVAILABLE")
 
+    # 2️⃣ Verfügbarkeit verringern
     game.available -= 1
-    game.borrow_count += 1
+
+    # 3️⃣ Borrowings für das Event des aktuellen Jahres
+    event = get_current_event(db)
+    borrow = db.query(GameBorrow).filter_by(game_id=game.id, event_id=event.id).first()
+
+    event = get_current_event(db)
+
+    if is_event_active(event) or force_event:
+        borrow = (
+            db.query(GameBorrow).filter_by(game_id=game.id, event_id=event.id).first()
+        )
+        if borrow:
+            borrow.count += 1
+        else:
+            borrow = GameBorrow(game_id=game.id, event_id=event.id, count=1)
+            db.add(borrow)
+    else:
+        # Event nicht aktiv → borrow_count fürs Event nicht ändern
+        borrow = (
+            db.query(GameBorrow).filter_by(game_id=game.id, event_id=event.id).first()
+        )
+
     db.commit()
     db.refresh(game)
 
-    # Beziehungen separat nachladen
+    # 4️⃣ Beziehungen separat nachladen
     game = (
         db.query(Game)
         .options(selectinload(Game.similar_games), selectinload(Game.tags))
@@ -399,6 +489,7 @@ def borrow_game_ean(
             if game.similar_games
             else []
         ),
+        "borrow_count": borrow.count,  # Event-spezifisch
     }
 
 
@@ -408,7 +499,7 @@ def return_game_ean(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("helper")),
 ):
-    # Row-Level-Lock setzen via EAN (ohne joinedload)
+    # 1️⃣ Row-Level-Lock auf das Game via EAN
     game = db.query(Game).filter(Game.ean == game_ean).with_for_update().first()
     if game is None:
         create_error(status_code=404, error_code="GAME_NOT_FOUND")
@@ -416,11 +507,16 @@ def return_game_ean(
     if game.available >= game.quantity:
         create_error(status_code=400, error_code="ALL_COPIES_AVAILABLE")
 
+    # 2️⃣ Verfügbarkeit erhöhen
     game.available += 1
     db.commit()
     db.refresh(game)
 
-    # Beziehungen separat nachladen
+    # 3️⃣ Borrowings für Event abrufen (nicht ändern)
+    event = get_current_event(db)
+    borrow = db.query(GameBorrow).filter_by(game_id=game.id, event_id=event.id).first()
+
+    # 4️⃣ Beziehungen separat nachladen
     game = (
         db.query(Game)
         .options(selectinload(Game.similar_games), selectinload(Game.tags))
@@ -436,4 +532,5 @@ def return_game_ean(
             if game.similar_games
             else []
         ),
+        "borrow_count": borrow.count if borrow else 0,  # Event-spezifisch
     }

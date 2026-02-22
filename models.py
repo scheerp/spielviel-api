@@ -303,6 +303,32 @@ class Game(Base):
     )
 
 
+class Event(Base):
+    __tablename__ = "events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    start_date = Column(DateTime, nullable=False)
+    end_date = Column(DateTime, nullable=False)
+    year = Column(Integer, nullable=False)
+
+
+class GameBorrow(Base):
+    __tablename__ = "game_borrows"
+
+    id = Column(Integer, primary_key=True, index=True)
+    event_id = Column(
+        Integer, ForeignKey("events.id", ondelete="CASCADE"), nullable=False
+    )
+    game_id = Column(
+        Integer, ForeignKey("games.id", ondelete="CASCADE"), nullable=False
+    )
+    count = Column(Integer, default=0)
+
+    event = relationship("Event", backref="borrows")
+    game = relationship("Game", backref="borrows")
+
+
 class User(Base):
     __tablename__ = "users"
 

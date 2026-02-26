@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session, joinedload, selectinload
-from sqlalchemy import asc
+from sqlalchemy import asc, desc
 from database import get_db
 from models import (
     Game,
@@ -150,6 +150,7 @@ def read_game(
     game_id: int,
     db: Session = Depends(get_db),
     edit_tokens: Optional[list[str]] = Query(None),
+    expire_after_minutes: int = Query(15, ge=1),
 ):
     # Spiel abrufen, mit den zugehörigen Tags, ähnlichen Spielen und PlayerSearches
     game = (
@@ -172,12 +173,13 @@ def read_game(
     now = datetime.now(timezone.utc)
     today_start = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
     today_end = today_start + timedelta(days=1)
+    valid_after = now - timedelta(minutes=expire_after_minutes)
 
-    # Filtern der PlayerSearches: Nur heutige Gesuche mit passender game_id
+    # PlayerSearches filtern (heute + noch gültig)
     filtered_player_searches = [
         search
         for search in game.player_searches
-        if search.game_id == game_id and today_start <= search.created_at < today_end
+        if (search.game_id == game_id and today_start <= search.created_at < today_end)
     ]
 
     # Berechnen der `can_edit`-Flags für jedes gefilterte Gesuch
@@ -207,7 +209,7 @@ def read_game(
                 location=search.location,
                 details=search.details or None,
                 created_at=search.created_at,
-                expires_at=search.expires_at,
+                is_valid=search.created_at >= valid_after,
                 can_edit=search.can_edit,
                 edit_token=search.edit_token if search.can_edit else None,
             )
@@ -257,7 +259,7 @@ def read_borrowed_games(
         .join(GameBorrow, Game.id == GameBorrow.game_id)
         .filter(GameBorrow.event_id == event.id, GameBorrow.count > 0)
         .options(joinedload(Game.tags))
-        .order_by(asc(Game.name))
+        .order_by(desc(GameBorrow.count))
     )
 
     # Limit anwenden

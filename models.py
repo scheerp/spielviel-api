@@ -13,7 +13,7 @@ from database import Base
 from sqlalchemy.orm import relationship
 from pydantic import BaseModel, ConfigDict
 from typing import List, Optional
-from datetime import datetime, timezone
+from datetime import datetime
 
 
 class PlayerSearchCreate(BaseModel):
@@ -44,19 +44,13 @@ class PlayerSearchResponse(BaseModel):
     details: Optional[str] = None
     can_edit: bool
     created_at: datetime
-    expires_at: datetime
+    is_valid: bool
     edit_token: Optional[str]
-
     game_name: Optional[str] = None
     max_players: Optional[int] = None
     img_url: Optional[str] = None
     thumbnail_url: Optional[str] = None
     best_playercount: Optional[int] = None
-
-    @property
-    def is_active(self) -> bool:
-        """Berechnet, ob das Gesuch noch aktiv ist."""
-        return self.expires_at > datetime.now(timezone.utc)
 
 
 class PlayerSearchCreateResponse(BaseModel):
@@ -69,7 +63,6 @@ class PlayerSearchCreateResponse(BaseModel):
     details: Optional[str] = None
     edit_token: str
     created_at: datetime
-    expires_at: datetime
 
 
 game_tags = Table(
@@ -370,7 +363,6 @@ class PlayerSearch(Base):
     location = Column(String, nullable=False)
     details = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    expires_at = Column(DateTime(timezone=True), nullable=False)
     edit_token = Column(String, unique=True, nullable=False)
 
     game = relationship("Game", back_populates="player_searches")

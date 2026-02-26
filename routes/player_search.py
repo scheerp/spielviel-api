@@ -20,6 +20,7 @@ router = APIRouter()
 @router.get("/", response_model=list[dict])
 def get_all_player_searches(
     db: Session = Depends(get_db),
+    expire_after_minutes: int = Query(15, ge=1),
     edit_tokens: list[str] = Query(
         None
     ),  # Optionales Array von edit_tokens als Query-Parameter
@@ -29,6 +30,7 @@ def get_all_player_searches(
     now = datetime.now(timezone.utc)
     today_start = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
     today_end = today_start + timedelta(days=1)
+    valid_after = now - timedelta(minutes=expire_after_minutes)
 
     # Alle heutigen PlayerSearch-Objekte abrufen
     searches = (
@@ -81,13 +83,79 @@ def get_all_player_searches(
                 "location": search.location,
                 "details": search.details,
                 "created_at": search.created_at,
-                "expires_at": search.expires_at,
+                "is_valid": search.created_at >= valid_after,
                 "can_edit": can_edit,
                 "edit_token": search.edit_token if can_edit else None,
             }
         )
 
     return list(grouped_results.values())
+
+
+@router.get("/public")
+def get_valid_player_searches(
+    db: Session = Depends(get_db),
+    expire_after_minutes: int = Query(15, ge=1),
+):
+    """
+    Public endpoint für Displays.
+    Gibt nur valide Player Searches zurück (keine Auth, keine edit_tokens).
+    """
+
+    now = datetime.now(timezone.utc)
+
+    today_start = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
+    today_end = today_start + timedelta(days=1)
+
+    valid_after = now - timedelta(minutes=expire_after_minutes)
+
+    searches = (
+        db.query(PlayerSearch, Game)
+        .join(Game, Game.id == PlayerSearch.game_id)
+        .filter(
+            PlayerSearch.created_at >= today_start,
+            PlayerSearch.created_at < today_end,
+            PlayerSearch.created_at >= valid_after,
+        )
+        .all()
+    )
+
+    grouped_results = defaultdict(lambda: {"game": None, "player_searches": []})
+
+    for search, game in searches:
+
+        if grouped_results[game.id]["game"] is None:
+            grouped_results[game.id]["game"] = {
+                "id": game.id,
+                "name": game.name,
+                "min_players": game.min_players,
+                "max_players": game.max_players,
+                "min_playtime": game.min_playtime,
+                "max_playtime": game.max_playtime,
+                "complexity_label": game.complexity_label,
+                "img_url": game.img_url,
+                "thumbnail_url": game.thumbnail_url,
+                "best_playercount": game.best_playercount,
+                "player_age": game.player_age,
+            }
+
+        grouped_results[game.id]["player_searches"].append(
+            {
+                "id": search.id,
+                "name": search.name,
+                "current_players": search.current_players,
+                "players_needed": search.players_needed,
+                "location": search.location,
+                "details": search.details,
+                "created_at": search.created_at,
+            }
+        )
+
+    return {
+        "generated_at": now,
+        "count": len(searches),
+        "data": list(grouped_results.values()),
+    }
 
 
 @router.post("/create", response_model=PlayerSearchCreateResponse)
@@ -98,7 +166,6 @@ def create_player_search(request: PlayerSearchCreate, db: Session = Depends(get_
     if not game:
         create_error(status_code=404, error_code="GAME_NOT_FOUND")
 
-    expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)
     edit_token = str(uuid.uuid4())
     details = request.details if request.details is not None else None
 
@@ -109,7 +176,6 @@ def create_player_search(request: PlayerSearchCreate, db: Session = Depends(get_
         players_needed=request.players_needed,
         location=request.location,
         details=details,
-        expires_at=expires_at,
         edit_token=edit_token,
     )
 

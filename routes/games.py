@@ -78,15 +78,23 @@ def read_all_games(
     ),
 ):
     query = db.query(Game).options(joinedload(Game.tags)).order_by(asc(Game.name))
-    query = apply_game_filters(
-        query,
-        filter_text,
-        show_available_only,
-        min_player_count,
-        player_age,
-        show_missing_ean_only,
-        complexities,
-    )
+
+    # 🔹 Automatische Barcode-Erkennung
+    if filter_text and filter_text.isdigit() and 8 <= len(filter_text) <= 13:
+        # Eindeutige EAN → Suche direkt
+        query = query.filter(Game.ean == filter_text)
+    else:
+        # Normale Filterlogik
+        query = apply_game_filters(
+            query,
+            filter_text,
+            show_available_only,
+            min_player_count,
+            player_age,
+            show_missing_ean_only,
+            complexities,
+        )
+
     total_games = query.count()
     games = query.offset(offset).limit(limit).all()
 
@@ -543,4 +551,98 @@ def return_game_ean(
             else []
         ),
         "borrow_count": borrow.count if borrow else 0,  # Event-spezifisch
+    }
+
+
+@router.put("/game/scan_by_ean/{game_ean}")
+def scan_game_by_ean(
+    game_ean: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_role("helper")),
+    force_event: bool = Query(
+        False, description="Borrowings auch außerhalb des Events zählen"
+    ),
+):
+    # 1️⃣ Row-Level-Lock auf das Game via EAN
+    game = db.query(Game).filter(Game.ean == game_ean).with_for_update().first()
+
+    if game is None:
+        create_error(status_code=404, error_code="GAME_NOT_FOUND")
+
+    event = get_current_event(db)
+
+    borrow = db.query(GameBorrow).filter_by(game_id=game.id, event_id=event.id).first()
+
+    action = "inconclusive"
+
+    # ----------------------------
+    # BORROW (alle verfügbar)
+    # ----------------------------
+    if game.available == game.quantity:
+
+        if game.available <= 0:
+            create_error(status_code=400, error_code="NO_COPIES_AVAILABLE")
+
+        game.available -= 1
+
+        if is_event_active(event) or force_event:
+            if borrow:
+                borrow.count += 1
+            else:
+                borrow = GameBorrow(
+                    game_id=game.id,
+                    event_id=event.id,
+                    count=1,
+                )
+                db.add(borrow)
+
+        action = "borrow"
+
+    # ----------------------------
+    # RETURN (keine verfügbar)
+    # ----------------------------
+    elif game.available == 0:
+
+        if game.available >= game.quantity:
+            create_error(status_code=400, error_code="ALL_COPIES_AVAILABLE")
+
+        game.available += 1
+
+        action = "return"
+
+    # ----------------------------
+    # COMMIT nur wenn Änderung
+    # ----------------------------
+    if action != "inconclusive":
+        db.commit()
+        db.refresh(game)
+
+        if borrow:
+            db.refresh(borrow)
+
+    # ----------------------------
+    # Beziehungen separat nachladen
+    # ----------------------------
+    game = (
+        db.query(Game)
+        .options(
+            selectinload(Game.similar_games),
+            selectinload(Game.tags),
+        )
+        .filter(Game.ean == game_ean)
+        .first()
+    )
+
+    borrow_count = borrow.count if borrow else 0
+
+    return {
+        "action": action,
+        **game.__dict__,
+        "tags": game.tags,
+        "similar_games": (
+            [sg.similar_game_id for sg in game.similar_games]
+            if game.similar_games
+            else []
+        ),
+        "borrow_count": borrow_count,
     }

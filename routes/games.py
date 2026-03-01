@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session, joinedload, selectinload
-from sqlalchemy import asc, desc
+from sqlalchemy import asc, desc, func
 from database import get_db
 from models import (
     Game,
@@ -108,7 +108,28 @@ def read_all_games(
         user_familiarity = {uk.game_id: uk.familiarity for uk in user_knowledge}
 
     game_responses = [
-        GameResponse(**game.__dict__, my_familiarity=user_familiarity.get(game.id))
+        GameResponse(
+            id=game.id,
+            bgg_id=game.bgg_id,
+            name=game.name,
+            img_url=game.img_url,
+            available=game.available,
+            quantity=game.quantity,
+            min_players=game.min_players or None,
+            max_players=game.max_players or None,
+            min_playtime=game.min_playtime or None,
+            max_playtime=game.max_playtime or None,
+            ean=game.ean or None,
+            thumbnail_url=game.thumbnail_url or None,
+            player_age=game.player_age or None,
+            complexity=game.complexity or None,
+            complexity_label=game.complexity_label or None,
+            best_playercount=game.best_playercount or None,
+            min_recommended_playercount=game.min_recommended_playercount or None,
+            max_recommended_playercount=game.max_recommended_playercount or None,
+            my_familiarity=user_familiarity.get(game.id),
+            borrows_count=None,
+        )
         for game in games
     ]
 
@@ -232,7 +253,7 @@ def read_game(
         rating=game.rating or None,
         ean=game.ean or None,
         available=game.available,
-        borrow_count=game.borrow_count,
+        borrows_count=None,
         quantity=game.quantity,
         acquired_from=game.acquired_from or None,
         inventory_location=game.inventory_location or None,
@@ -252,33 +273,57 @@ def read_game(
 def read_borrowed_games(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_role("helper")),
-    limit: int = Query(20, ge=1),  # default 20, min 1
-    year: Optional[int] = Query(None, description="Jahr des Events"),
+    limit: int = Query(20, ge=1),
+    year: Optional[int] = Query(None),
 ):
-    """
-    Gibt die ausgeliehenen Spiele für ein Event zurück.
-    - `limit`: maximale Anzahl Spiele (default 20)
-    - `year`: Jahr des Events (default current year)
-    """
     event = get_current_event(db, year)
 
+    # Query: Spieldaten + Summe der Borrows
     borrowed_query = (
-        db.query(Game)
+        db.query(Game, func.sum(GameBorrow.count).label("total_borrows"))
         .join(GameBorrow, Game.id == GameBorrow.game_id)
-        .filter(GameBorrow.event_id == event.id, GameBorrow.count > 0)
-        .options(joinedload(Game.tags))
-        .order_by(desc(GameBorrow.count))
+        .filter(GameBorrow.event_id == event.id)
+        .group_by(Game.id)
+        .order_by(desc("total_borrows"))
+        .limit(limit)
+        .all()
     )
 
-    # Limit anwenden
-    borrowed = borrowed_query.limit(limit).all()
+    # Gesamtanzahl aller Ausleihen
+    total_borrows = (
+        db.query(func.sum(GameBorrow.count))
+        .filter(GameBorrow.event_id == event.id)
+        .scalar()
+    ) or 0
 
-    total_games = borrowed_query.count()
+    # Mapping in GameResponse
+    games = [
+        GameResponse(
+            id=game.Game.id,
+            bgg_id=game.Game.bgg_id,
+            name=game.Game.name,
+            img_url=game.Game.img_url,
+            available=game.Game.available,
+            quantity=game.Game.quantity,
+            min_players=game.Game.min_players,
+            max_players=game.Game.max_players,
+            min_playtime=game.Game.min_playtime,
+            max_playtime=game.Game.max_playtime,
+            ean=game.Game.ean,
+            thumbnail_url=game.Game.thumbnail_url,
+            player_age=game.Game.player_age,
+            complexity=game.Game.complexity,
+            complexity_label=game.Game.complexity_label,
+            best_playercount=game.Game.best_playercount,
+            min_recommended_playercount=game.Game.min_recommended_playercount,
+            max_recommended_playercount=game.Game.max_recommended_playercount,
+            my_familiarity=None,
+            borrows_count=game.total_borrows,
+        )
+        for game in borrowed_query
+    ]
 
-    return {
-        "games": borrowed,
-        "total": total_games,
-    }
+    return GamesWithCountResponse(games=games, total=total_borrows)
 
 
 @router.post("/by-ids", response_model=List[GameResponse])
@@ -291,7 +336,35 @@ def read_games_by_ids(game_ids: List[int], db: Session = Depends(get_db)):
     )
     if not games:
         create_error(status_code=404, error_code="NO_GAMES_AVAILABLE")
-    return games
+
+    # Mapping auf Pydantic-Model
+    game_responses = [
+        GameResponse(
+            id=game.id,
+            bgg_id=game.bgg_id,
+            name=game.name,
+            img_url=game.img_url,
+            available=game.available,
+            quantity=game.quantity,
+            min_players=game.min_players or None,
+            max_players=game.max_players or None,
+            min_playtime=game.min_playtime or None,
+            max_playtime=game.max_playtime or None,
+            ean=game.ean or None,
+            thumbnail_url=game.thumbnail_url or None,
+            player_age=game.player_age or None,
+            complexity=game.complexity or None,
+            complexity_label=game.complexity_label or None,
+            best_playercount=game.best_playercount or None,
+            min_recommended_playercount=game.min_recommended_playercount or None,
+            max_recommended_playercount=game.max_recommended_playercount or None,
+            my_familiarity=None,
+            borrows_count=None,
+        )
+        for game in games
+    ]
+
+    return game_responses
 
 
 @router.get("/game/by_ean/{ean}", response_model=GameResponse)

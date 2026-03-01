@@ -175,7 +175,7 @@ class GameResponseWithDetails(BaseModel):
     rating: Optional[float]
     ean: Optional[str]
     available: int
-    borrow_count: int
+    borrows_count: Optional[int]
     quantity: int
     acquired_from: Optional[str]
     inventory_location: Optional[str]
@@ -204,7 +204,7 @@ class GameResponse(BaseModel):
     max_playtime: Optional[int]
     ean: Optional[str]
     available: int
-    borrow_count: int
+    borrows_count: Optional[int]
     quantity: int
     img_url: Optional[str]
     thumbnail_url: Optional[str]
@@ -265,7 +265,6 @@ class Game(Base):
     rating = Column(Float, nullable=True)
     ean = Column(String, unique=True, nullable=True)
     available = Column(Integer, default=1)
-    borrow_count = Column(Integer, default=0)
     quantity = Column(Integer, default=1)
     acquired_from = Column(String, nullable=True)
     inventory_location = Column(String, nullable=True)

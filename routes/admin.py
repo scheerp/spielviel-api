@@ -134,20 +134,6 @@ def update_similar_games_endpoint(
         import_lock.release()
 
 
-@router.put("/reset_borrow_count")
-def reset_borrow_count_for_all_games(
-    db: Session = Depends(get_db), current_user: User = Depends(require_role("admin"))
-):
-    updated_rows = db.query(Game).update(
-        {Game.borrow_count: 0}, synchronize_session=False
-    )
-    db.commit()
-    return {
-        "message": "Borrow count for all games has been reset.",
-        "updated_rows": updated_rows,
-    }
-
-
 @router.put("/reset_available")
 def reset_available_for_all_games(
     db: Session = Depends(get_db), current_user: User = Depends(require_role("admin"))

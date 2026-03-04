@@ -175,7 +175,7 @@ class GameResponseWithDetails(BaseModel):
     rating: Optional[float]
     ean: Optional[str]
     available: int
-    borrows_count: Optional[int]
+    borrows_count: Optional[int] = None
     quantity: int
     acquired_from: Optional[str]
     inventory_location: Optional[str]
@@ -204,7 +204,7 @@ class GameResponse(BaseModel):
     max_playtime: Optional[int]
     ean: Optional[str]
     available: int
-    borrows_count: Optional[int]
+    borrows_count: Optional[int] = None
     quantity: int
     img_url: Optional[str]
     thumbnail_url: Optional[str]

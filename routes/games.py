@@ -5,6 +5,7 @@ from database import get_db
 from models import (
     Game,
     GameResponse,
+    GameSearchResponse,
     GamesWithCountResponse,
     GameResponseWithDetails,
     User,
@@ -267,6 +268,45 @@ def read_game(
         min_recommended_playercount=game.min_recommended_playercount or None,
         max_recommended_playercount=game.max_recommended_playercount or None,
     )
+
+
+@router.get("/search", response_model=List[GameSearchResponse])
+def search_games(
+    db: Session = Depends(get_db),
+    query: str = Query("", min_length=0),
+    limit: int = Query(10, ge=1, le=20),
+):
+    """
+    Lightweight-Suche für Autocomplete / Spielauswahl bei Mitspielersuche.
+    - Wenn query leer ist: alphabetische Spiele (erste X)
+    - Wenn query gesetzt: case-insensitive Suche im Namen
+    """
+
+    base_query = db.query(Game)
+
+    # 🔍 Wenn Suchbegriff vorhanden → filtern
+    if query.strip():
+        search_term = f"%{query.lower()}%"
+        base_query = base_query.filter(func.lower(Game.name).like(search_term))
+
+    # 📦 Nur benötigte Felder laden
+    games = base_query.order_by(asc(Game.name)).limit(limit).all()
+
+    return [
+        GameSearchResponse(
+            id=game.id,
+            name=game.name,
+            thumbnail_url=game.thumbnail_url,
+            min_players=game.min_players,
+            max_players=game.max_players,
+            playing_time=game.playing_time,
+            img_url=game.img_url,
+            player_age=game.player_age,
+            complexity_label=game.complexity_label,
+            best_playercount=game.best_playercount,
+        )
+        for game in games
+    ]
 
 
 @router.get("/borrowed-games", response_model=GamesWithCountResponse)

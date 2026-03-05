@@ -12,13 +12,15 @@ from sqlalchemy import (
 from database import Base
 from sqlalchemy.orm import relationship
 from pydantic import BaseModel, ConfigDict
-from typing import List, Optional
+from typing import List, Optional, Literal
 from datetime import datetime
 
 
 class PlayerSearchCreate(BaseModel):
     name: str
-    game_id: int
+    game_id: Optional[int] = None
+    target_type: Literal["game", "complexity", "free"] = "game"
+    target_complexity_label: Optional[str] = None
     current_players: int
     players_needed: int
     location: str
@@ -27,6 +29,9 @@ class PlayerSearchCreate(BaseModel):
 
 class PlayerSearchEdit(BaseModel):
     name: str
+    game_id: Optional[int] = None
+    target_type: Literal["game", "complexity", "free"] = "game"
+    target_complexity_label: Optional[str] = None
     current_players: int
     players_needed: int
     location: str
@@ -36,7 +41,9 @@ class PlayerSearchEdit(BaseModel):
 
 class PlayerSearchResponse(BaseModel):
     id: int
-    game_id: int
+    game_id: Optional[int] = None
+    target_type: str
+    target_complexity_label: Optional[str] = None
     current_players: int
     players_needed: int
     location: str
@@ -55,7 +62,9 @@ class PlayerSearchResponse(BaseModel):
 
 class PlayerSearchCreateResponse(BaseModel):
     id: int
-    game_id: int
+    game_id: Optional[int] = None
+    target_type: str
+    target_complexity_label: Optional[str] = None
     name: str
     current_players: int
     players_needed: int
@@ -63,6 +72,19 @@ class PlayerSearchCreateResponse(BaseModel):
     details: Optional[str] = None
     edit_token: str
     created_at: datetime
+
+
+class GameSearchResponse(BaseModel):
+    id: int
+    name: str
+    thumbnail_url: Optional[str]
+    min_players: Optional[int]
+    max_players: Optional[int]
+    playing_time: Optional[int]
+    img_url: Optional[str]
+    player_age: Optional[int]
+    complexity_label: Optional[str]
+    best_playercount: Optional[int]
 
 
 game_tags = Table(
@@ -354,9 +376,9 @@ class PlayerSearch(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
-    game_id = Column(
-        Integer, ForeignKey("games.id", ondelete="CASCADE"), nullable=False
-    )
+    game_id = Column(Integer, ForeignKey("games.id", ondelete="CASCADE"), nullable=True)
+    target_type = Column(String, nullable=False, default="game")
+    target_complexity_label = Column(String, nullable=True)
     current_players = Column(Integer, nullable=False)
     players_needed = Column(Integer, nullable=False)
     location = Column(String, nullable=False)
